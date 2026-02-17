@@ -14,6 +14,9 @@
     "max_public_holdout_overlap": 0.5,
     "max_public_adversarial_overlap": 0.4,
     "max_holdout_adversarial_overlap": 0.45,
+    "max_public_overclaim_rate": 0.05,
+    "max_holdout_overclaim_rate": 0.08,
+    "max_adversarial_overclaim_rate": 0.1,
     "min_specialist_public_aggregate_delta": 0.0,
     "min_specialist_holdout_aggregate_delta": 0.0,
     "min_specialist_adversarial_aggregate_delta": 0.0

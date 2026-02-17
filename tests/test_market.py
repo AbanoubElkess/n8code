@@ -17,11 +17,13 @@ class TestMarket(unittest.TestCase):
         self.assertIn("taxonomy", report)
         self.assertIn("competitive_map", report)
         self.assertIn("opportunities", report)
+        self.assertIn("naming_reality", report)
         self.assertEqual(len(report["opportunities"]), 10)
         scores = [row["weighted_score"] for row in report["opportunities"]]
         self.assertEqual(scores, sorted(scores, reverse=True))
+        self.assertTrue(all("maturity_band" in row for row in report["opportunities"]))
+        self.assertTrue(all("naming_risk_level" in row for row in report["opportunities"]))
 
 
 if __name__ == "__main__":
     unittest.main()
-

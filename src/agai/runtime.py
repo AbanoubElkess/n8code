@@ -151,7 +151,7 @@ class AgenticRuntime:
                 "must include falsification path",
                 "budget-first optimization",
             ],
-            success_metric="hard-suite-absolute-win",
+            success_metric="hard-suite-measurable-improvement",
             budget={"max_tokens": 3600, "max_latency_ms": 80_000, "max_energy_joules": 240.0, "max_usd": 0.12},
             deadline="same-session",
             domain="quantum-error-correction-and-device-physics",

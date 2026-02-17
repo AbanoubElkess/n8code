@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from .reality_guard import RealityGuard
+
 
 @dataclass
 class MarketSegment:
@@ -43,6 +45,9 @@ class Opportunity:
 
 
 class MarketGapAnalyzer:
+    def __init__(self) -> None:
+        self.reality_guard = RealityGuard()
+
     def taxonomy(self) -> list[MarketSegment]:
         return [
             MarketSegment("infrastructure", "Model serving, vector data, and observability", 0.88),
@@ -207,9 +212,25 @@ class MarketGapAnalyzer:
         taxonomy = self.taxonomy()
         competitors = self.competitive_map()
         opportunities = self.missing_piece_opportunities()
+        opportunity_rows: list[dict[str, Any]] = []
+        for row in opportunities:
+            payload = {**asdict(row), "weighted_score": row.weighted_score}
+            payload["maturity_band"] = self.reality_guard.maturity_band(
+                feasibility=row.feasibility,
+                accessibility=row.accessibility,
+            )
+            audit = self.reality_guard.audit_text(
+                f"{row.description} {row.why_now} {row.first_experiment}"
+            )
+            payload["naming_risk_level"] = audit["risk_level"]
+            payload["naming_overclaim_hits"] = audit["overclaim_hits"]
+            payload["naming_reality_score"] = audit["reality_score"]
+            opportunity_rows.append(payload)
+
+        naming_reality = self.reality_guard.audit_market_opportunities(opportunity_rows)
         return {
             "taxonomy": [asdict(row) for row in taxonomy],
             "competitive_map": [asdict(row) for row in competitors],
-            "opportunities": [{**asdict(row), "weighted_score": row.weighted_score} for row in opportunities],
+            "opportunities": opportunity_rows,
+            "naming_reality": naming_reality,
         }
-

@@ -69,6 +69,11 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("benchmark_tracking", eval_report)
         self.assertIn("summary", eval_report["benchmark_tracking"])
         self.assertTrue((self.temp_dir / "benchmark_history.jsonl").exists())
+        self.assertIn("failure_analysis", eval_report)
+        self.assertIn("claim_calibration", eval_report)
+        self.assertIn("combined", eval_report["failure_analysis"])
+        self.assertIn("public_overclaim_gap", eval_report["benchmark_progress"]["gaps"])
+        self.assertIn("max_public_overclaim_rate", eval_report["benchmark_progress"]["targets"])
 
         distilled = runtime.run_trace_distillation()
         self.assertIn("policies", distilled)

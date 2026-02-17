@@ -12,12 +12,14 @@ from .quantum_suite import (
     score_quantum_answer,
     suite_leakage_report,
 )
+from .reality_guard import RealityGuard
 from .types import Scorecard, TaskSpec
 
 
 class Evaluator:
     def __init__(self, benchmark_target_path: str = "config/benchmark_targets.json") -> None:
         self.benchmark_target_path = benchmark_target_path
+        self.reality_guard = RealityGuard()
 
     def _load_targets(self) -> dict[str, float]:
         default_targets = {
@@ -34,6 +36,9 @@ class Evaluator:
             "max_public_holdout_overlap": 0.5,
             "max_public_adversarial_overlap": 0.4,
             "max_holdout_adversarial_overlap": 0.45,
+            "max_public_overclaim_rate": 0.05,
+            "max_holdout_overclaim_rate": 0.08,
+            "max_adversarial_overclaim_rate": 0.10,
             "min_specialist_public_aggregate_delta": 0.0,
             "min_specialist_holdout_aggregate_delta": 0.0,
             "min_specialist_adversarial_aggregate_delta": 0.0,
@@ -75,6 +80,15 @@ class Evaluator:
                 "max_holdout_adversarial_overlap": float(
                     targets.get("max_holdout_adversarial_overlap", default_targets["max_holdout_adversarial_overlap"])
                 ),
+                "max_public_overclaim_rate": float(
+                    targets.get("max_public_overclaim_rate", default_targets["max_public_overclaim_rate"])
+                ),
+                "max_holdout_overclaim_rate": float(
+                    targets.get("max_holdout_overclaim_rate", default_targets["max_holdout_overclaim_rate"])
+                ),
+                "max_adversarial_overclaim_rate": float(
+                    targets.get("max_adversarial_overclaim_rate", default_targets["max_adversarial_overclaim_rate"])
+                ),
                 "min_specialist_public_aggregate_delta": float(
                     targets.get(
                         "min_specialist_public_aggregate_delta",
@@ -110,13 +124,21 @@ class Evaluator:
         costs: list[float] = []
         energies: list[float] = []
         contradictions = 0
+        overclaim_cases = 0
+        overclaim_hits_total = 0
         details: list[dict[str, object]] = []
+        failure_taxonomy = {
+            "quality_below_threshold": 0,
+            "overclaiming": 0,
+            "contradiction_detected": 0,
+            "budget_limit_triggered": 0,
+        }
 
         for case in cases:
             task = TaskSpec(
                 goal=case.prompt,
                 constraints=["single-consumer-laptop", "strict budget", "falsification required"],
-                success_metric="absolute-win-on-defined-hard-suite",
+                success_metric="measurable-improvement-on-defined-hard-suite",
                 budget={"max_tokens": 3500, "max_latency_ms": 80_000, "max_energy_joules": 220.0, "max_usd": 0.12},
                 deadline="immediate",
                 domain=case.domain,
@@ -132,6 +154,11 @@ class Evaluator:
             base_answer = str(baseline.outcomes.get("final_answer", ""))
             multi_score = score_quantum_answer(case.expected, multi_answer)
             base_score = score_quantum_answer(case.expected, base_answer)
+            claim_audit = self.reality_guard.audit_text(multi_answer)
+            case_overclaim_hits = int(claim_audit.get("overclaim_hits", 0))
+            overclaim_hits_total += case_overclaim_hits
+            if case_overclaim_hits > 0:
+                overclaim_cases += 1
             multi_scores.append(multi_score)
             baseline_scores.append(base_score)
 
@@ -140,6 +167,15 @@ class Evaluator:
             costs.append(float(budget.get("usd_cost", 0.0)))
             energies.append(float(budget.get("energy_joules", 0.0)))
             contradictions += len(multi.contradictions)
+            has_budget_limit = "budget exceeded" in multi_answer.lower()
+            if multi_score < 0.62:
+                failure_taxonomy["quality_below_threshold"] += 1
+            if case_overclaim_hits > 0:
+                failure_taxonomy["overclaiming"] += 1
+            if len(multi.contradictions) > 0:
+                failure_taxonomy["contradiction_detected"] += 1
+            if has_budget_limit:
+                failure_taxonomy["budget_limit_triggered"] += 1
 
             details.append(
                 {
@@ -149,10 +185,14 @@ class Evaluator:
                     "baseline_mode": baseline_mode,
                     "delta": multi_score - base_score,
                     "passed": multi_score >= 0.62,
+                    "overclaim_hits": case_overclaim_hits,
+                    "overclaim_terms": claim_audit.get("overclaim_terms", []),
+                    "reality_score": claim_audit.get("reality_score", 0.0),
                 }
             )
 
         aggregate_delta = (mean(multi_scores) - mean(baseline_scores)) if baseline_scores else 0.0
+        overclaim_rate = (overclaim_cases / len(details)) if details else 0.0
         pass_rate = (
             sum(1 for score in multi_scores if score >= 0.62) / len(multi_scores)
             if multi_scores
@@ -168,12 +208,16 @@ class Evaluator:
             notes=[
                 f"average_multi_score={mean(multi_scores) if multi_scores else 0.0:.3f}",
                 f"average_baseline_score={mean(baseline_scores) if baseline_scores else 0.0:.3f}",
+                f"overclaim_rate={overclaim_rate:.3f}",
             ],
         )
         return {
             "details": details,
             "aggregate_delta": aggregate_delta,
             "pass_rate": pass_rate,
+            "overclaim_rate": overclaim_rate,
+            "failure_taxonomy": failure_taxonomy,
+            "overclaim_hits_total": overclaim_hits_total,
             "scorecard": scorecard,
         }
 
@@ -226,6 +270,9 @@ class Evaluator:
         holdout_pass_rate = float(holdout["pass_rate"])
         adversarial_quality = float(adversarial["scorecard"].quality)
         adversarial_pass_rate = float(adversarial["pass_rate"])
+        public_overclaim_rate = float(public["overclaim_rate"])
+        holdout_overclaim_rate = float(holdout["overclaim_rate"])
+        adversarial_overclaim_rate = float(adversarial["overclaim_rate"])
         split_quality_delta = abs(float(scorecard.quality) - holdout_quality)
         adversarial_split_quality_delta = abs(float(scorecard.quality) - adversarial_quality)
         leakage = suite_leakage_report()
@@ -264,6 +311,12 @@ class Evaluator:
             float(leakage["holdout_vs_adversarial"]["mean_best_overlap"])
             - float(targets["max_holdout_adversarial_overlap"]),
         )
+        public_overclaim_gap = max(0.0, public_overclaim_rate - float(targets["max_public_overclaim_rate"]))
+        holdout_overclaim_gap = max(0.0, holdout_overclaim_rate - float(targets["max_holdout_overclaim_rate"]))
+        adversarial_overclaim_gap = max(
+            0.0,
+            adversarial_overclaim_rate - float(targets["max_adversarial_overclaim_rate"]),
+        )
         specialist_public_gap = max(
             0.0,
             float(targets["min_specialist_public_aggregate_delta"]) - float(specialist_reference["aggregate_delta"]),
@@ -297,9 +350,19 @@ class Evaluator:
             + public_holdout_overlap_gap
             + public_adversarial_overlap_gap
             + holdout_adversarial_overlap_gap
+            + public_overclaim_gap
+            + holdout_overclaim_gap
+            + adversarial_overclaim_gap
             + specialist_public_gap
             + specialist_holdout_gap
             + specialist_adversarial_gap
+        )
+        combined_failures = self._merge_failure_taxonomy(
+            [
+                public["failure_taxonomy"],
+                holdout["failure_taxonomy"],
+                adversarial["failure_taxonomy"],
+            ]
         )
         benchmark_progress = {
             "targets": targets,
@@ -314,6 +377,9 @@ class Evaluator:
                 "adversarial_quality": adversarial_quality,
                 "adversarial_pass_rate": adversarial_pass_rate,
                 "public_adversarial_quality_delta": adversarial_split_quality_delta,
+                "public_overclaim_rate": public_overclaim_rate,
+                "holdout_overclaim_rate": holdout_overclaim_rate,
+                "adversarial_overclaim_rate": adversarial_overclaim_rate,
                 "suite_leakage": leakage,
                 "specialist_reference_public_aggregate_delta": float(specialist_reference["aggregate_delta"]),
                 "specialist_reference_holdout_aggregate_delta": float(specialist_reference_holdout["aggregate_delta"]),
@@ -334,6 +400,9 @@ class Evaluator:
                 "public_holdout_overlap_gap": public_holdout_overlap_gap,
                 "public_adversarial_overlap_gap": public_adversarial_overlap_gap,
                 "holdout_adversarial_overlap_gap": holdout_adversarial_overlap_gap,
+                "public_overclaim_gap": public_overclaim_gap,
+                "holdout_overclaim_gap": holdout_overclaim_gap,
+                "adversarial_overclaim_gap": adversarial_overclaim_gap,
                 "specialist_public_gap": specialist_public_gap,
                 "specialist_holdout_gap": specialist_holdout_gap,
                 "specialist_adversarial_gap": specialist_adversarial_gap,
@@ -353,6 +422,20 @@ class Evaluator:
             "adversarial_scorecard": adversarial["scorecard"].__dict__,
             "adversarial_details": adversarial["details"],
             "adversarial_aggregate_delta": float(adversarial["aggregate_delta"]),
+            "failure_analysis": {
+                "public": public["failure_taxonomy"],
+                "holdout": holdout["failure_taxonomy"],
+                "adversarial": adversarial["failure_taxonomy"],
+                "combined": combined_failures,
+            },
+            "claim_calibration": {
+                "public_overclaim_rate": public_overclaim_rate,
+                "holdout_overclaim_rate": holdout_overclaim_rate,
+                "adversarial_overclaim_rate": adversarial_overclaim_rate,
+                "public_overclaim_hits_total": int(public["overclaim_hits_total"]),
+                "holdout_overclaim_hits_total": int(holdout["overclaim_hits_total"]),
+                "adversarial_overclaim_hits_total": int(adversarial["overclaim_hits_total"]),
+            },
             "specialist_reference": {
                 "public": {
                     "scorecard": specialist_reference["scorecard"].__dict__,
@@ -372,3 +455,10 @@ class Evaluator:
             },
             "benchmark_progress": benchmark_progress,
         }
+
+    def _merge_failure_taxonomy(self, rows: list[dict[str, int]]) -> dict[str, int]:
+        merged: dict[str, int] = {}
+        for row in rows:
+            for key, value in row.items():
+                merged[key] = merged.get(key, 0) + int(value)
+        return merged
