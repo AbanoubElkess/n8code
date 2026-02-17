@@ -181,8 +181,11 @@ class AgenticRuntime:
             question=question,
             domain=task.domain,
             constraints=task.constraints,
+            budget=task.budget,
         )
         sandbox_report = self.guidance.latest_sandbox_report()
+        execution_dag = self.guidance.latest_execution_dag()
+        execution_validation = self.guidance.latest_execution_validation()
         payload = {
             "compute_decision": compute_decision.__dict__,
             "result": result.__dict__,
@@ -195,6 +198,11 @@ class AgenticRuntime:
             "experiment_plan": experiment_plan.__dict__,
             "hypothesis_candidates": hypotheses,
             "hypothesis_sandbox": sandbox_report,
+            "researcher_guidance": {
+                "execution_dag": execution_dag,
+                "execution_validation": execution_validation,
+                "next_action": execution_dag.get("entry_node", ""),
+            },
         }
         out_path = self.artifacts_dir / "quantum_demo_output.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")

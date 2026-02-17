@@ -31,6 +31,10 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("tool_reasoning", demo)
         self.assertIn("hypothesis_sandbox", demo)
         self.assertIn("acceptance_rate", demo["hypothesis_sandbox"])
+        self.assertIn("researcher_guidance", demo)
+        self.assertIn("execution_dag", demo["researcher_guidance"])
+        self.assertIn("execution_validation", demo["researcher_guidance"])
+        self.assertTrue(demo["researcher_guidance"]["execution_validation"]["ok"])
         self.assertIn("qec_simulator_hook", demo["tool_reasoning"])
         qec_tool = demo["tool_reasoning"]["qec_simulator_hook"]
         self.assertTrue(qec_tool["ok"])
