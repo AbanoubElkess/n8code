@@ -64,6 +64,30 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
     draft.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
     draft.add_argument("--output", default="", help="Optional output path for generated patch template")
+    sandbox = sub.add_parser(
+        "external-claim-sandbox-pipeline",
+        help="Sandbox-only draft+normalize+replay pipeline with before/after claim-distance telemetry",
+    )
+    sandbox.add_argument("--baseline-id", required=True, help="Baseline ID in registry")
+    sandbox.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to source baseline registry json")
+    sandbox.add_argument("--patch-overrides", default="", help="Optional path to filled patch overrides json")
+    sandbox.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    sandbox.add_argument("--max-metric-delta", type=float, default=0.02, help="Maximum allowed absolute metric delta")
+    sandbox.add_argument(
+        "--align-to-eval",
+        dest="align_to_eval",
+        action="store_true",
+        help="Align suite_id/scoring_protocol during normalization",
+    )
+    sandbox.add_argument(
+        "--no-align-to-eval",
+        dest="align_to_eval",
+        action="store_false",
+        help="Disable suite/scoring alignment during normalization",
+    )
+    sandbox.set_defaults(align_to_eval=True)
+    sandbox.add_argument("--replace-metrics", action="store_true", help="Replace metrics with patch-overrides metrics when provided")
+    sandbox.add_argument("--dry-run", action="store_true", help="Draft and validate only, without applying normalization")
     ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
     ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
     ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
@@ -129,6 +153,17 @@ def main() -> None:
             registry_path=str(args.registry_path),
             eval_path=str(args.eval_path or "") or None,
             output_path=str(args.output or "") or None,
+        )
+    elif args.command == "external-claim-sandbox-pipeline":
+        output = runtime.run_external_claim_sandbox_pipeline(
+            baseline_id=str(args.baseline_id),
+            registry_path=str(args.registry_path),
+            patch_overrides_path=str(args.patch_overrides or "") or None,
+            eval_path=str(args.eval_path or "") or None,
+            max_metric_delta=float(args.max_metric_delta),
+            align_to_eval=bool(args.align_to_eval),
+            replace_metrics=bool(args.replace_metrics),
+            dry_run=bool(args.dry_run),
         )
     elif args.command == "ingest-external-baseline":
         output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)

@@ -230,6 +230,18 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("patch_template", draft_result)
         self.assertIn("output_path", draft_result)
         self.assertTrue(Path(draft_result["output_path"]).exists())
+        sandbox_result = runtime.run_external_claim_sandbox_pipeline(
+            baseline_id="external-runtime-ingest",
+            registry_path=str(ingest_registry),
+            eval_path=str(self.temp_dir / "quantum_hard_suite_eval.json"),
+            dry_run=True,
+        )
+        self.assertEqual(sandbox_result["status"], "dry-run")
+        self.assertTrue(sandbox_result["source_registry_unchanged"])
+        self.assertIn("before", sandbox_result)
+        self.assertIn("after", sandbox_result)
+        self.assertIn("template", sandbox_result)
+        self.assertTrue((self.temp_dir / "external_claim_sandbox_pipeline.json").exists())
 
         distilled = runtime.run_trace_distillation()
         self.assertIn("policies", distilled)

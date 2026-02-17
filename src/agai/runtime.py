@@ -20,6 +20,7 @@ from .distillation import TraceDistiller
 from .evaluation import Evaluator
 from .external_claim_plan import ExternalClaimPlanner
 from .external_claim_replay import ExternalClaimReplayRunner
+from .external_claim_sandbox import ExternalClaimSandboxPipeline
 from .hypothesis import HypothesisExplorer
 from .market import MarketGapAnalyzer
 from .memory import ProvenanceMemory
@@ -66,6 +67,7 @@ class AgenticRuntime:
         self.direction_tracker = DirectionTracker(history_path=str(self.artifacts_dir / "direction_history.jsonl"))
         self.external_claim_planner = ExternalClaimPlanner()
         self.external_claim_replay = ExternalClaimReplayRunner(policy_path=str(self.release_status.policy_path))
+        self.external_claim_sandbox = ExternalClaimSandboxPipeline(policy_path=str(self.release_status.policy_path))
         self.declared_baseline_comparator = DeclaredBaselineComparator()
         self.tool_engine = ToolReasoningEngine(self.tool_registry)
         self.agents = self._build_agents(use_ollama=use_ollama, ollama_model=ollama_model)
@@ -613,6 +615,80 @@ class AgenticRuntime:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         payload["output_path"] = str(out_path)
+        return payload
+
+    def run_external_claim_sandbox_pipeline(
+        self,
+        baseline_id: str,
+        registry_path: str | None = None,
+        patch_overrides_path: str | None = None,
+        eval_path: str | None = None,
+        max_metric_delta: float = 0.02,
+        align_to_eval: bool = True,
+        replace_metrics: bool = False,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        if eval_path:
+            path = Path(eval_path)
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"eval artifact not found: {path}",
+                    "baseline_id": baseline_id,
+                }
+            eval_report = json.loads(path.read_text(encoding="utf-8"))
+            eval_source = "explicit-eval-artifact"
+        else:
+            eval_report, eval_source = self._load_or_run_eval_report()
+
+        patch_overrides: dict[str, Any] | None = None
+        patch_source = "none"
+        if patch_overrides_path:
+            patch_path = Path(patch_overrides_path)
+            if not patch_path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"patch overrides file not found: {patch_path}",
+                    "baseline_id": baseline_id,
+                }
+            try:
+                patch_payload = json.loads(patch_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                return {
+                    "status": "error",
+                    "reason": f"invalid json in patch overrides: {exc}",
+                    "baseline_id": baseline_id,
+                }
+            if not isinstance(patch_payload, dict):
+                return {
+                    "status": "error",
+                    "reason": "patch overrides payload must be an object",
+                    "baseline_id": baseline_id,
+                }
+            patch_overrides = patch_payload
+            patch_source = "explicit-overrides-file"
+
+        active_registry = registry_path or "config/frontier_baselines.json"
+        sandbox_dir = self.artifacts_dir / "sandbox"
+        sandbox_dir.mkdir(parents=True, exist_ok=True)
+        sandbox_registry = sandbox_dir / f"{baseline_id}.registry.json"
+        payload = self.external_claim_sandbox.run(
+            baseline_id=baseline_id,
+            eval_report=eval_report,
+            source_registry_path=active_registry,
+            sandbox_registry_path=str(sandbox_registry),
+            patch_overrides=patch_overrides,
+            max_metric_delta=max_metric_delta,
+            align_to_eval=align_to_eval,
+            replace_metrics=replace_metrics,
+            dry_run=dry_run,
+        )
+        payload["sources"] = {
+            "eval": eval_source,
+            "patch_overrides": patch_source,
+        }
+        out_path = self.artifacts_dir / "external_claim_sandbox_pipeline.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
     def run_attest_external_baseline(
