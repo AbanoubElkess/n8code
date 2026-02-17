@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .architecture_guard import ArchitectureGuard
+from .benchmark_tracker import BenchmarkTracker
 from .runtime import AgenticRuntime
 
 
@@ -27,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("quantum-eval", help="Run quantum hard-suite evaluation")
     sub.add_parser("distill", help="Distill trace logs into compact policy artifacts")
     sub.add_parser("validate-architecture", help="Validate implementation against architecture reference")
+    sub.add_parser("benchmark-status", help="Show benchmark distance trend from history")
     return parser
 
 
@@ -51,6 +53,8 @@ def main() -> None:
         output = runtime.run_trace_distillation()
     elif args.command == "validate-architecture":
         output = ArchitectureGuard().validate()
+    elif args.command == "benchmark-status":
+        output = BenchmarkTracker(history_path=str(Path(args.artifacts_dir) / "benchmark_history.jsonl")).summary()
     else:
         parser.error(f"Unsupported command: {args.command}")
         return

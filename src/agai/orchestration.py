@@ -201,6 +201,8 @@ class MultiAgentOrchestrator:
                 continue
             for line in text.splitlines():
                 lower = line.lower().strip()
+                if "evidence keywords" in lower:
+                    continue
                 if "proposal" in lower and len(line) < 20:
                     continue
                 if "risk" in lower:

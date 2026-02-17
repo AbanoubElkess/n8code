@@ -34,6 +34,12 @@ class TestRuntime(unittest.TestCase):
 
         eval_report = runtime.run_quantum_hard_suite()
         self.assertIn("scorecard", eval_report)
+        self.assertIn("benchmark_progress", eval_report)
+        self.assertIn("remaining_distance", eval_report["benchmark_progress"]["gaps"])
+        self.assertIn("case_margin_gap", eval_report["benchmark_progress"]["gaps"])
+        self.assertIn("benchmark_tracking", eval_report)
+        self.assertIn("summary", eval_report["benchmark_tracking"])
+        self.assertTrue((self.temp_dir / "benchmark_history.jsonl").exists())
 
         distilled = runtime.run_trace_distillation()
         self.assertIn("policies", distilled)

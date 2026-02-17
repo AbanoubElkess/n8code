@@ -1,0 +1,11 @@
+{
+  "suite_id": "quantum_hard_suite_v1",
+  "targets": {
+    "min_case_score": 0.62,
+    "min_case_margin": 0.1,
+    "min_pass_rate": 1.0,
+    "min_quality": 0.8,
+    "min_aggregate_delta": 0.3
+  },
+  "notes": "Release-oriented benchmark targets for hard-suite progress tracking."
+}

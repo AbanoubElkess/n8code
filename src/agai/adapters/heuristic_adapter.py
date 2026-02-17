@@ -39,6 +39,8 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
             "Evidence keywords:",
         ]
         if "quantum" in lower or "syndrome" in lower:
+            is_flux_case = "flux noise" in lower
+            is_stabilizer_case = "stabilizer" in lower
             planner_proposal = (
                 "Define a two-stage study: decoder selection followed by constrained ablation. "
                 "Track logical error rate and latency under identical syndrome traces."
@@ -51,6 +53,28 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
                 "Compare matching-based and belief-propagation decoders across syndrome depth sweeps; "
                 "report logical error rate, runtime overhead, and ablation on control-field smoothness."
             )
+            if is_flux_case:
+                planner_proposal = (
+                    "Build a flux noise mitigation plan using explicit control parameter sweeps "
+                    "to stabilize logical error rate without violating runtime budget."
+                )
+                critic_proposal = (
+                    "Stress-test whether claimed flux noise mitigation is real by running falsification "
+                    "against shifted control parameter regimes and negative controls."
+                )
+                physicist_proposal = (
+                    "Use control parameter modulation (frequency and field smoothness) to mitigate flux noise, "
+                    "then evaluate decoder sensitivity and falsification outcomes."
+                )
+            if is_stabilizer_case:
+                critic_proposal = (
+                    "Propose a testable stabilizer-cycle modification and enforce runtime constraint validation "
+                    "to keep overhead below the stated limit."
+                )
+                physicist_proposal = (
+                    "Design a stabilizer schedule adjustment targeting lower logical error rate while preserving "
+                    "runtime constraint and testable implementation."
+                )
             if role == "critic":
                 proposal = critic_proposal
                 risks = (
@@ -61,6 +85,16 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
                     "Run falsification with held-out noise profiles, then perform negative-control ablation "
                     "where no gain should appear."
                 )
+                if is_flux_case:
+                    experiment = (
+                        "Run flux noise falsification under mismatched control parameter settings and verify "
+                        "mitigation disappears under negative controls."
+                    )
+                if is_stabilizer_case:
+                    experiment = (
+                        "Run stabilizer-cycle ablation with runtime constraint checks (<15% overhead) and "
+                        "falsification on held-out error channels."
+                    )
             elif role == "physicist":
                 proposal = physicist_proposal
                 risks = (
@@ -70,15 +104,39 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
                     "Sweep coupling/frequency control parameters, execute syndrome decoding ablation, "
                     "and report confidence intervals with reproducible seeds."
                 )
+                if is_flux_case:
+                    experiment = (
+                        "Sweep flux noise amplitudes and control parameter grids, report mitigation gain, "
+                        "and include falsification checks with confidence intervals."
+                    )
+                if is_stabilizer_case:
+                    experiment = (
+                        "Evaluate stabilizer timing variants, measure logical error rate, enforce runtime constraint, "
+                        "and confirm testable reproducibility."
+                    )
             else:
                 proposal = planner_proposal
                 risks = "Risk: over-optimization for one benchmark task can reduce generalization."
                 experiment = (
                     "Start with coarse search, then narrow to top configurations using budget-aware branch pruning."
                 )
+                if is_flux_case:
+                    experiment = (
+                        "Prioritize flux noise mitigation candidates, then run control parameter ablations with "
+                        "falsification gates before final selection."
+                    )
             keywords = (
                 "decoder, syndrome, logical error rate, latency, ablation, falsification, tradeoff, confidence interval"
             )
+            if is_flux_case:
+                keywords = (
+                    "flux noise, mitigation, control parameter, falsification, logical error rate, "
+                    "tradeoff, confidence interval"
+                )
+            if is_stabilizer_case:
+                keywords = (
+                    "stabilizer, logical error rate, runtime constraint, testable, falsification, ablation"
+                )
         else:
             proposal = "Use constrained multi-agent decomposition with explicit budget gates."
             risks = (

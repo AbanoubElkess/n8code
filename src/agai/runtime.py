@@ -8,6 +8,7 @@ from typing import Any
 
 from .adapters import HeuristicSmallModelAdapter, OllamaAdapter
 from .alignment import ReflectionDebateLoop
+from .benchmark_tracker import BenchmarkTracker
 from .compute_controller import TestTimeComputeController
 from .distillation import TraceDistiller
 from .evaluation import Evaluator
@@ -45,6 +46,7 @@ class AgenticRuntime:
         self.reflector = ReflectionDebateLoop()
         self.distiller = TraceDistiller()
         self.evaluator = Evaluator()
+        self.benchmark_tracker = BenchmarkTracker(history_path=str(self.artifacts_dir / "benchmark_history.jsonl"))
         self.tool_engine = ToolReasoningEngine(self.tool_registry)
         self.agents = self._build_agents(use_ollama=use_ollama, ollama_model=ollama_model)
         self.orchestrator = MultiAgentOrchestrator(agents=self.agents, memory=self.memory)
@@ -201,6 +203,11 @@ class AgenticRuntime:
             orchestrator=self.orchestrator,
             baseline_agent_id="planner",
         )
+        snapshot = self.benchmark_tracker.record(eval_report)
+        eval_report["benchmark_tracking"] = {
+            "snapshot": snapshot,
+            "summary": self.benchmark_tracker.summary(),
+        }
         out_path = self.artifacts_dir / "quantum_hard_suite_eval.json"
         out_path.write_text(json.dumps(eval_report, indent=2, ensure_ascii=True), encoding="utf-8")
         return eval_report
