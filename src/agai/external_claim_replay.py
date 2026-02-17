@@ -109,6 +109,14 @@ class ExternalClaimReplayRunner:
         after_distance = int(after_gate.get("external_claim_distance", 0))
         before_comparable = int(before_gate.get("comparable_external_baselines", 0))
         after_comparable = int(after_gate.get("comparable_external_baselines", 0))
+        before_progress = self._distance_progress_summary(plan_before)
+        after_progress = self._distance_progress_summary(plan_after)
+        before_total_claim_distance = int(before_progress.get("current_total_distance", before_distance))
+        after_total_claim_distance = int(after_progress.get("current_total_distance", after_distance))
+        before_max_total_claim_distance = int(before_progress.get("max_total_distance", 0))
+        after_max_total_claim_distance = int(after_progress.get("max_total_distance", 0))
+        before_total_progress_ratio = float(before_progress.get("current_progress_ratio", 0.0))
+        after_total_progress_ratio = float(after_progress.get("current_progress_ratio", 0.0))
 
         return {
             "status": "ok",
@@ -121,6 +129,9 @@ class ExternalClaimReplayRunner:
                 "external_claim_distance": before_distance,
                 "comparable_external_baselines": before_comparable,
                 "required_external_baselines": int(before_gate.get("required_external_baselines", 0)),
+                "total_claim_distance": before_total_claim_distance,
+                "max_total_claim_distance": before_max_total_claim_distance,
+                "total_progress_ratio": before_total_progress_ratio,
             },
             "after": {
                 "external_claim_ready": bool(release_after.get("external_claim_ready", False)),
@@ -128,10 +139,15 @@ class ExternalClaimReplayRunner:
                 "external_claim_distance": after_distance,
                 "comparable_external_baselines": after_comparable,
                 "required_external_baselines": int(after_gate.get("required_external_baselines", 0)),
+                "total_claim_distance": after_total_claim_distance,
+                "max_total_claim_distance": after_max_total_claim_distance,
+                "total_progress_ratio": after_total_progress_ratio,
             },
             "delta": {
                 "external_claim_distance_reduction": before_distance - after_distance,
                 "comparable_external_baselines_increase": after_comparable - before_comparable,
+                "total_claim_distance_reduction": before_total_claim_distance - after_total_claim_distance,
+                "total_progress_ratio_gain": after_total_progress_ratio - before_total_progress_ratio,
             },
             "replay_summary": {
                 "candidate_rows": len(candidates),
@@ -151,7 +167,7 @@ class ExternalClaimReplayRunner:
                 ),
                 "additional_baselines_needed": int(plan_before.get("additional_baselines_needed", 0)),
                 "claim_calibration_distance": int(plan_before.get("claim_calibration_distance", 0)),
-                "distance_progress": self._distance_progress_summary(plan_before),
+                "distance_progress": before_progress,
             },
             "after_external_claim_plan": {
                 "estimated_distance_after_recoverable_actions": int(
@@ -162,7 +178,7 @@ class ExternalClaimReplayRunner:
                 ),
                 "additional_baselines_needed": int(plan_after.get("additional_baselines_needed", 0)),
                 "claim_calibration_distance": int(plan_after.get("claim_calibration_distance", 0)),
-                "distance_progress": self._distance_progress_summary(plan_after),
+                "distance_progress": after_progress,
             },
             "disclaimer": (
                 "Replay automation only executes attestation for rows without manual metadata/harness blockers. "

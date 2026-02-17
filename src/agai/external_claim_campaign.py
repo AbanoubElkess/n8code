@@ -320,14 +320,19 @@ class ExternalClaimSandboxCampaignRunner:
         progress = before_plan.get("distance_progress", {})
         if not isinstance(progress, dict):
             progress = {}
-        total_claim_distance = int(progress.get("current_total_distance", int(before.get("external_claim_distance", 0))))
+        total_claim_distance = int(
+            before.get("total_claim_distance", progress.get("current_total_distance", int(before.get("external_claim_distance", 0))))
+        )
         max_total_claim_distance = int(
-            progress.get(
-                "max_total_distance",
-                int(before.get("required_external_baselines", 0)),
+            before.get(
+                "max_total_claim_distance",
+                progress.get(
+                    "max_total_distance",
+                    int(before.get("required_external_baselines", 0)),
+                ),
             )
         )
-        total_progress_ratio = float(progress.get("current_progress_ratio", 0.0))
+        total_progress_ratio = float(before.get("total_progress_ratio", progress.get("current_progress_ratio", 0.0)))
         return {
             "external_claim_distance": int(before.get("external_claim_distance", 0)),
             "external_claim_ready": bool(before.get("external_claim_ready", False)),
