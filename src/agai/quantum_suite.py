@@ -83,6 +83,32 @@ def _concept_vector(tokens: set[str]) -> list[float]:
     return vector
 
 
+def _jaccard(left: set[str], right: set[str]) -> float:
+    union = left | right
+    if not union:
+        return 0.0
+    return len(left & right) / len(union)
+
+
+def _case_tokens(case: EvalCase) -> set[str]:
+    return set(_tokenize(f"{case.prompt} {case.expected}"))
+
+
+def _cross_split_overlap(left_cases: list[EvalCase], right_cases: list[EvalCase]) -> dict[str, float]:
+    if not left_cases or not right_cases:
+        return {"mean_best_overlap": 0.0, "max_best_overlap": 0.0}
+    scores: list[float] = []
+    right_tokens = [_case_tokens(case) for case in right_cases]
+    for case in left_cases:
+        left_tokens = _case_tokens(case)
+        best = max(_jaccard(left_tokens, candidate) for candidate in right_tokens)
+        scores.append(best)
+    return {
+        "mean_best_overlap": sum(scores) / len(scores),
+        "max_best_overlap": max(scores),
+    }
+
+
 def _cosine_similarity(left: list[float], right: list[float]) -> float:
     dot = sum(a * b for a, b in zip(left, right))
     left_norm = math.sqrt(sum(v * v for v in left))
@@ -186,6 +212,52 @@ def holdout_quantum_suite() -> list[EvalCase]:
             tags=["holdout", "novelty", "constraints"],
         ),
     ]
+
+
+def adversarial_quantum_suite() -> list[EvalCase]:
+    return [
+        EvalCase(
+            case_id="QEC-004-A",
+            prompt=(
+                "Design a decoder experiment for correlated syndrome bursts and calibration drift. "
+                "Keep runtime overhead below 15%, include explicit tradeoffs, and add a falsification route."
+            ),
+            expected="decoder syndrome logical error rate runtime tradeoff falsification ablation",
+            domain="quantum-error-correction",
+            tags=["adversarial", "decoder", "constraints", "falsification"],
+        ),
+        EvalCase(
+            case_id="QDP-005-A",
+            prompt=(
+                "Flux drift spikes are intermittent and non-stationary. Propose mitigation using control parameters, "
+                "then define a disconfirming protocol with negative controls."
+            ),
+            expected="flux noise mitigation control parameter falsification tradeoff",
+            domain="quantum-device-physics",
+            tags=["adversarial", "device-physics", "falsification"],
+        ),
+        EvalCase(
+            case_id="QEC-006-A",
+            prompt=(
+                "Suggest a testable stabilizer scheduling change that targets lower logical error while preserving "
+                "strict runtime constraints. Include an ablation-first validation plan."
+            ),
+            expected="stabilizer logical error rate runtime constraint testable ablation",
+            domain="quantum-error-correction",
+            tags=["adversarial", "stabilizer", "runtime", "novelty"],
+        ),
+    ]
+
+
+def suite_leakage_report() -> dict[str, dict[str, float]]:
+    public = default_quantum_suite()
+    holdout = holdout_quantum_suite()
+    adversarial = adversarial_quantum_suite()
+    return {
+        "public_vs_holdout": _cross_split_overlap(public, holdout),
+        "public_vs_adversarial": _cross_split_overlap(public, adversarial),
+        "holdout_vs_adversarial": _cross_split_overlap(holdout, adversarial),
+    }
 
 
 def score_quantum_answer(expected_hint: str, answer: str) -> float:

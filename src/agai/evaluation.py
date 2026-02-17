@@ -5,7 +5,13 @@ from pathlib import Path
 from statistics import mean
 
 from .orchestration import MultiAgentOrchestrator
-from .quantum_suite import default_quantum_suite, holdout_quantum_suite, score_quantum_answer
+from .quantum_suite import (
+    adversarial_quantum_suite,
+    default_quantum_suite,
+    holdout_quantum_suite,
+    score_quantum_answer,
+    suite_leakage_report,
+)
 from .types import Scorecard, TaskSpec
 
 
@@ -22,8 +28,15 @@ class Evaluator:
             "min_aggregate_delta": 0.3,
             "min_holdout_quality": 0.72,
             "max_public_holdout_quality_delta": 0.2,
+            "min_adversarial_quality": 0.7,
+            "min_adversarial_pass_rate": 1.0,
+            "max_public_adversarial_quality_delta": 0.25,
+            "max_public_holdout_overlap": 0.5,
+            "max_public_adversarial_overlap": 0.4,
+            "max_holdout_adversarial_overlap": 0.45,
             "min_specialist_public_aggregate_delta": 0.0,
             "min_specialist_holdout_aggregate_delta": 0.0,
+            "min_specialist_adversarial_aggregate_delta": 0.0,
         }
         path = Path(self.benchmark_target_path)
         if not path.exists():
@@ -41,6 +54,27 @@ class Evaluator:
                 "max_public_holdout_quality_delta": float(
                     targets.get("max_public_holdout_quality_delta", default_targets["max_public_holdout_quality_delta"])
                 ),
+                "min_adversarial_quality": float(
+                    targets.get("min_adversarial_quality", default_targets["min_adversarial_quality"])
+                ),
+                "min_adversarial_pass_rate": float(
+                    targets.get("min_adversarial_pass_rate", default_targets["min_adversarial_pass_rate"])
+                ),
+                "max_public_adversarial_quality_delta": float(
+                    targets.get(
+                        "max_public_adversarial_quality_delta",
+                        default_targets["max_public_adversarial_quality_delta"],
+                    )
+                ),
+                "max_public_holdout_overlap": float(
+                    targets.get("max_public_holdout_overlap", default_targets["max_public_holdout_overlap"])
+                ),
+                "max_public_adversarial_overlap": float(
+                    targets.get("max_public_adversarial_overlap", default_targets["max_public_adversarial_overlap"])
+                ),
+                "max_holdout_adversarial_overlap": float(
+                    targets.get("max_holdout_adversarial_overlap", default_targets["max_holdout_adversarial_overlap"])
+                ),
                 "min_specialist_public_aggregate_delta": float(
                     targets.get(
                         "min_specialist_public_aggregate_delta",
@@ -51,6 +85,12 @@ class Evaluator:
                     targets.get(
                         "min_specialist_holdout_aggregate_delta",
                         default_targets["min_specialist_holdout_aggregate_delta"],
+                    )
+                ),
+                "min_specialist_adversarial_aggregate_delta": float(
+                    targets.get(
+                        "min_specialist_adversarial_aggregate_delta",
+                        default_targets["min_specialist_adversarial_aggregate_delta"],
                     )
                 ),
             }
@@ -154,6 +194,12 @@ class Evaluator:
             baseline_agent_id=baseline_agent_id,
             baseline_mode="generalist",
         )
+        adversarial = self._evaluate_split(
+            cases=adversarial_quantum_suite(),
+            orchestrator=orchestrator,
+            baseline_agent_id=baseline_agent_id,
+            baseline_mode="generalist",
+        )
         specialist_reference = self._evaluate_split(
             cases=default_quantum_suite(),
             orchestrator=orchestrator,
@@ -166,13 +212,23 @@ class Evaluator:
             baseline_agent_id=baseline_agent_id,
             baseline_mode="specialist",
         )
+        specialist_reference_adversarial = self._evaluate_split(
+            cases=adversarial_quantum_suite(),
+            orchestrator=orchestrator,
+            baseline_agent_id=baseline_agent_id,
+            baseline_mode="specialist",
+        )
         details = public["details"]
         scorecard = public["scorecard"]
         aggregate_delta = float(public["aggregate_delta"])
         pass_rate = float(public["pass_rate"])
         holdout_quality = float(holdout["scorecard"].quality)
         holdout_pass_rate = float(holdout["pass_rate"])
+        adversarial_quality = float(adversarial["scorecard"].quality)
+        adversarial_pass_rate = float(adversarial["pass_rate"])
         split_quality_delta = abs(float(scorecard.quality) - holdout_quality)
+        adversarial_split_quality_delta = abs(float(scorecard.quality) - adversarial_quality)
+        leakage = suite_leakage_report()
 
         targets = self._load_targets()
         per_case_gap = [
@@ -188,6 +244,26 @@ class Evaluator:
         aggregate_delta_gap = max(0.0, float(targets["min_aggregate_delta"]) - float(aggregate_delta))
         holdout_quality_gap = max(0.0, float(targets["min_holdout_quality"]) - holdout_quality)
         split_delta_gap = max(0.0, split_quality_delta - float(targets["max_public_holdout_quality_delta"]))
+        adversarial_quality_gap = max(0.0, float(targets["min_adversarial_quality"]) - adversarial_quality)
+        adversarial_pass_rate_gap = max(0.0, float(targets["min_adversarial_pass_rate"]) - adversarial_pass_rate)
+        adversarial_split_gap = max(
+            0.0,
+            adversarial_split_quality_delta - float(targets["max_public_adversarial_quality_delta"]),
+        )
+        public_holdout_overlap_gap = max(
+            0.0,
+            float(leakage["public_vs_holdout"]["mean_best_overlap"]) - float(targets["max_public_holdout_overlap"]),
+        )
+        public_adversarial_overlap_gap = max(
+            0.0,
+            float(leakage["public_vs_adversarial"]["mean_best_overlap"])
+            - float(targets["max_public_adversarial_overlap"]),
+        )
+        holdout_adversarial_overlap_gap = max(
+            0.0,
+            float(leakage["holdout_vs_adversarial"]["mean_best_overlap"])
+            - float(targets["max_holdout_adversarial_overlap"]),
+        )
         specialist_public_gap = max(
             0.0,
             float(targets["min_specialist_public_aggregate_delta"]) - float(specialist_reference["aggregate_delta"]),
@@ -196,15 +272,35 @@ class Evaluator:
             0.0,
             float(targets["min_specialist_holdout_aggregate_delta"]) - float(specialist_reference_holdout["aggregate_delta"]),
         )
+        specialist_adversarial_gap = max(
+            0.0,
+            float(targets["min_specialist_adversarial_aggregate_delta"])
+            - float(specialist_reference_adversarial["aggregate_delta"]),
+        )
         worst_case_margin = (
             min(row["margin_over_min_case_score"] for row in per_case_gap)
             if per_case_gap
             else -float(targets["min_case_margin"])
         )
         case_margin_gap = max(0.0, float(targets["min_case_margin"]) - float(worst_case_margin))
-        remaining_distance = quality_gap + pass_rate_gap + aggregate_delta_gap + sum(
-            row["gap_to_min_case_score"] for row in per_case_gap
-        ) + case_margin_gap + holdout_quality_gap + split_delta_gap + specialist_public_gap + specialist_holdout_gap
+        remaining_distance = (
+            quality_gap
+            + pass_rate_gap
+            + aggregate_delta_gap
+            + sum(row["gap_to_min_case_score"] for row in per_case_gap)
+            + case_margin_gap
+            + holdout_quality_gap
+            + split_delta_gap
+            + adversarial_quality_gap
+            + adversarial_pass_rate_gap
+            + adversarial_split_gap
+            + public_holdout_overlap_gap
+            + public_adversarial_overlap_gap
+            + holdout_adversarial_overlap_gap
+            + specialist_public_gap
+            + specialist_holdout_gap
+            + specialist_adversarial_gap
+        )
         benchmark_progress = {
             "targets": targets,
             "observed": {
@@ -215,8 +311,15 @@ class Evaluator:
                 "holdout_quality": holdout_quality,
                 "holdout_pass_rate": holdout_pass_rate,
                 "split_quality_delta": split_quality_delta,
+                "adversarial_quality": adversarial_quality,
+                "adversarial_pass_rate": adversarial_pass_rate,
+                "public_adversarial_quality_delta": adversarial_split_quality_delta,
+                "suite_leakage": leakage,
                 "specialist_reference_public_aggregate_delta": float(specialist_reference["aggregate_delta"]),
                 "specialist_reference_holdout_aggregate_delta": float(specialist_reference_holdout["aggregate_delta"]),
+                "specialist_reference_adversarial_aggregate_delta": float(
+                    specialist_reference_adversarial["aggregate_delta"]
+                ),
             },
             "gaps": {
                 "quality_gap": quality_gap,
@@ -225,8 +328,15 @@ class Evaluator:
                 "case_margin_gap": case_margin_gap,
                 "holdout_quality_gap": holdout_quality_gap,
                 "split_delta_gap": split_delta_gap,
+                "adversarial_quality_gap": adversarial_quality_gap,
+                "adversarial_pass_rate_gap": adversarial_pass_rate_gap,
+                "adversarial_split_gap": adversarial_split_gap,
+                "public_holdout_overlap_gap": public_holdout_overlap_gap,
+                "public_adversarial_overlap_gap": public_adversarial_overlap_gap,
+                "holdout_adversarial_overlap_gap": holdout_adversarial_overlap_gap,
                 "specialist_public_gap": specialist_public_gap,
                 "specialist_holdout_gap": specialist_holdout_gap,
+                "specialist_adversarial_gap": specialist_adversarial_gap,
                 "per_case_gap": per_case_gap,
                 "remaining_distance": remaining_distance,
             },
@@ -240,6 +350,9 @@ class Evaluator:
             "holdout_scorecard": holdout["scorecard"].__dict__,
             "holdout_details": holdout["details"],
             "holdout_aggregate_delta": float(holdout["aggregate_delta"]),
+            "adversarial_scorecard": adversarial["scorecard"].__dict__,
+            "adversarial_details": adversarial["details"],
+            "adversarial_aggregate_delta": float(adversarial["aggregate_delta"]),
             "specialist_reference": {
                 "public": {
                     "scorecard": specialist_reference["scorecard"].__dict__,
@@ -250,6 +363,11 @@ class Evaluator:
                     "scorecard": specialist_reference_holdout["scorecard"].__dict__,
                     "details": specialist_reference_holdout["details"],
                     "aggregate_delta": float(specialist_reference_holdout["aggregate_delta"]),
+                },
+                "adversarial": {
+                    "scorecard": specialist_reference_adversarial["scorecard"].__dict__,
+                    "details": specialist_reference_adversarial["details"],
+                    "aggregate_delta": float(specialist_reference_adversarial["aggregate_delta"]),
                 },
             },
             "benchmark_progress": benchmark_progress,

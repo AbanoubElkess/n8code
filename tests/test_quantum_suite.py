@@ -7,7 +7,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import unittest
 
-from agai.quantum_suite import default_quantum_suite, evaluate_suite_responses, holdout_quantum_suite, score_quantum_answer
+from agai.quantum_suite import (
+    adversarial_quantum_suite,
+    default_quantum_suite,
+    evaluate_suite_responses,
+    holdout_quantum_suite,
+    score_quantum_answer,
+    suite_leakage_report,
+)
 
 
 class TestQuantumSuite(unittest.TestCase):
@@ -31,6 +38,18 @@ class TestQuantumSuite(unittest.TestCase):
         holdout = holdout_quantum_suite()
         self.assertEqual(len(holdout), 3)
         self.assertTrue(all(case.case_id.endswith("-H") for case in holdout))
+
+    def test_adversarial_suite_present(self) -> None:
+        adversarial = adversarial_quantum_suite()
+        self.assertEqual(len(adversarial), 3)
+        self.assertTrue(all(case.case_id.endswith("-A") for case in adversarial))
+
+    def test_suite_leakage_report(self) -> None:
+        report = suite_leakage_report()
+        self.assertIn("public_vs_holdout", report)
+        self.assertIn("public_vs_adversarial", report)
+        self.assertIn("holdout_vs_adversarial", report)
+        self.assertTrue(0.0 <= report["public_vs_holdout"]["mean_best_overlap"] <= 1.0)
 
     def test_keyword_stuffing_penalty(self) -> None:
         expected = "decoder tradeoff syndrome error rate latency ablation"

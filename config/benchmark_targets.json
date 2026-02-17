@@ -1,5 +1,5 @@
 {
-  "suite_id": "quantum_hard_suite_v1",
+  "suite_id": "quantum_hard_suite_v2_adversarial",
   "targets": {
     "min_case_score": 0.62,
     "min_case_margin": 0.1,
@@ -8,8 +8,15 @@
     "min_aggregate_delta": 0.3,
     "min_holdout_quality": 0.72,
     "max_public_holdout_quality_delta": 0.2,
+    "min_adversarial_quality": 0.7,
+    "min_adversarial_pass_rate": 1.0,
+    "max_public_adversarial_quality_delta": 0.25,
+    "max_public_holdout_overlap": 0.5,
+    "max_public_adversarial_overlap": 0.4,
+    "max_holdout_adversarial_overlap": 0.45,
     "min_specialist_public_aggregate_delta": 0.0,
-    "min_specialist_holdout_aggregate_delta": 0.0
+    "min_specialist_holdout_aggregate_delta": 0.0,
+    "min_specialist_adversarial_aggregate_delta": 0.0
   },
-  "notes": "Release-oriented benchmark targets for hard-suite progress tracking."
+  "notes": "Release-oriented benchmark targets for hard-suite progress tracking including adversarial split."
 }
