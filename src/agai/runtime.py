@@ -17,6 +17,7 @@ from .market import MarketGapAnalyzer
 from .memory import ProvenanceMemory
 from .orchestration import AgentRuntime, MultiAgentOrchestrator
 from .qec_tools import QECSimulatorHook
+from .scale_path import ScalePathDecisionEngine
 from .research_guidance import ResearchGuidanceEngine
 from .tool_registry import MCPToolRegistry, ToolSpec
 from .tool_reasoning import ToolReasoningEngine
@@ -40,6 +41,7 @@ class AgenticRuntime:
         self.qec_hook = QECSimulatorHook()
         self._register_default_tools()
         self.market = MarketGapAnalyzer()
+        self.scale_path = ScalePathDecisionEngine()
         self.explorer = HypothesisExplorer()
         self.guidance = ResearchGuidanceEngine(self.explorer)
         self.compute = TestTimeComputeController()
@@ -228,3 +230,25 @@ class AgenticRuntime:
             output_path=str(self.artifacts_dir / "distilled_policy.json"),
         )
         return distilled
+
+    def run_scale_path_decision_framework(self) -> dict[str, Any]:
+        default_scenario = {
+            "name": "default-local-first",
+            "privacy_level": "strict",
+            "monthly_budget_usd": 250.0,
+            "latency_sla_ms": 60_000,
+            "offline_requirement": True,
+            "regulatory_sensitivity": "medium",
+            "team_ops_capacity": "medium",
+            "workload_variability": "high",
+            "peak_task_complexity": "high",
+        }
+        decision = self.scale_path.evaluate(default_scenario)
+        scenario_analysis = self.scale_path.scenario_analysis()
+        payload = {
+            "default_decision": decision,
+            "scenario_analysis": scenario_analysis,
+        }
+        out_path = self.artifacts_dir / "scale_path_decision.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload

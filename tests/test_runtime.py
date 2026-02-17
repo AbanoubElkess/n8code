@@ -79,6 +79,12 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("policies", distilled)
         self.assertTrue((self.temp_dir / "distilled_policy.json").exists())
 
+        scale_path = runtime.run_scale_path_decision_framework()
+        self.assertIn("default_decision", scale_path)
+        self.assertIn("scenario_analysis", scale_path)
+        self.assertIn("recommended_profile", scale_path["default_decision"])
+        self.assertTrue((self.temp_dir / "scale_path_decision.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

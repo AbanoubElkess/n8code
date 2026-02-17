@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("distill", help="Distill trace logs into compact policy artifacts")
     sub.add_parser("validate-architecture", help="Validate implementation against architecture reference")
     sub.add_parser("benchmark-status", help="Show benchmark distance trend from history")
+    sub.add_parser("scale-path", help="Run scale-path decision framework and scenario analysis")
     return parser
 
 
@@ -55,6 +56,8 @@ def main() -> None:
         output = ArchitectureGuard().validate()
     elif args.command == "benchmark-status":
         output = BenchmarkTracker(history_path=str(Path(args.artifacts_dir) / "benchmark_history.jsonl")).summary()
+    elif args.command == "scale-path":
+        output = runtime.run_scale_path_decision_framework()
     else:
         parser.error(f"Unsupported command: {args.command}")
         return
