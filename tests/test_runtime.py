@@ -242,6 +242,27 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("after", sandbox_result)
         self.assertIn("template", sandbox_result)
         self.assertTrue((self.temp_dir / "external_claim_sandbox_pipeline.json").exists())
+        campaign_config = self.temp_dir / "external_campaign_config.json"
+        campaign_config.write_text(
+            '{'
+            '"baseline_runs":[{'
+            '"baseline_id":"external-runtime-ingest",'
+            '"dry_run":true'
+            '}]}',
+            encoding="utf-8",
+        )
+        campaign_result = runtime.run_external_claim_sandbox_campaign(
+            config_path=str(campaign_config),
+            registry_path=str(ingest_registry),
+            eval_path=str(self.temp_dir / "quantum_hard_suite_eval.json"),
+            default_max_metric_delta=0.05,
+        )
+        self.assertIn("status", campaign_result)
+        self.assertIn("before", campaign_result)
+        self.assertIn("after", campaign_result)
+        self.assertIn("delta", campaign_result)
+        self.assertIn("baseline_steps", campaign_result)
+        self.assertTrue((self.temp_dir / "external_claim_sandbox_campaign.json").exists())
 
         distilled = runtime.run_trace_distillation()
         self.assertIn("policies", distilled)

@@ -88,6 +88,15 @@ def build_parser() -> argparse.ArgumentParser:
     sandbox.set_defaults(align_to_eval=True)
     sandbox.add_argument("--replace-metrics", action="store_true", help="Replace metrics with patch-overrides metrics when provided")
     sandbox.add_argument("--dry-run", action="store_true", help="Draft and validate only, without applying normalization")
+    campaign = sub.add_parser(
+        "external-claim-sandbox-campaign",
+        help="Run multi-step ingest+normalize+replay campaign in sandbox and report distance trajectory",
+    )
+    campaign.add_argument("--config", required=True, help="Path to campaign configuration json")
+    campaign.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to source baseline registry json")
+    campaign.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    campaign.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for replay checks")
+    campaign.add_argument("--sandbox-registry-path", default="", help="Optional explicit path for sandbox registry output")
     ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
     ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
     ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
@@ -164,6 +173,14 @@ def main() -> None:
             align_to_eval=bool(args.align_to_eval),
             replace_metrics=bool(args.replace_metrics),
             dry_run=bool(args.dry_run),
+        )
+    elif args.command == "external-claim-sandbox-campaign":
+        output = runtime.run_external_claim_sandbox_campaign(
+            config_path=str(args.config),
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            default_max_metric_delta=float(args.max_metric_delta),
+            sandbox_registry_path=str(args.sandbox_registry_path or "") or None,
         )
     elif args.command == "ingest-external-baseline":
         output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)

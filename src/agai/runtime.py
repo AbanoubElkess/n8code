@@ -21,6 +21,7 @@ from .evaluation import Evaluator
 from .external_claim_plan import ExternalClaimPlanner
 from .external_claim_replay import ExternalClaimReplayRunner
 from .external_claim_sandbox import ExternalClaimSandboxPipeline
+from .external_claim_campaign import ExternalClaimSandboxCampaignRunner
 from .hypothesis import HypothesisExplorer
 from .market import MarketGapAnalyzer
 from .memory import ProvenanceMemory
@@ -68,6 +69,9 @@ class AgenticRuntime:
         self.external_claim_planner = ExternalClaimPlanner()
         self.external_claim_replay = ExternalClaimReplayRunner(policy_path=str(self.release_status.policy_path))
         self.external_claim_sandbox = ExternalClaimSandboxPipeline(policy_path=str(self.release_status.policy_path))
+        self.external_claim_campaign = ExternalClaimSandboxCampaignRunner(
+            policy_path=str(self.release_status.policy_path)
+        )
         self.declared_baseline_comparator = DeclaredBaselineComparator()
         self.tool_engine = ToolReasoningEngine(self.tool_registry)
         self.agents = self._build_agents(use_ollama=use_ollama, ollama_model=ollama_model)
@@ -688,6 +692,68 @@ class AgenticRuntime:
             "patch_overrides": patch_source,
         }
         out_path = self.artifacts_dir / "external_claim_sandbox_pipeline.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_external_claim_sandbox_campaign(
+        self,
+        config_path: str,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        default_max_metric_delta: float = 0.02,
+        sandbox_registry_path: str | None = None,
+    ) -> dict[str, Any]:
+        config_file = Path(config_path)
+        if not config_file.exists():
+            return {
+                "status": "error",
+                "reason": f"campaign config not found: {config_file}",
+            }
+        try:
+            config_payload = json.loads(config_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return {
+                "status": "error",
+                "reason": f"invalid campaign config json: {exc}",
+            }
+        if not isinstance(config_payload, dict):
+            return {
+                "status": "error",
+                "reason": "campaign config payload must be an object",
+            }
+
+        if eval_path:
+            path = Path(eval_path)
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"eval artifact not found: {path}",
+                }
+            eval_report = json.loads(path.read_text(encoding="utf-8"))
+            eval_source = "explicit-eval-artifact"
+        else:
+            eval_report, eval_source = self._load_or_run_eval_report()
+
+        active_registry = registry_path or "config/frontier_baselines.json"
+        sandbox_dir = self.artifacts_dir / "sandbox"
+        sandbox_dir.mkdir(parents=True, exist_ok=True)
+        campaign_sandbox = (
+            Path(sandbox_registry_path)
+            if sandbox_registry_path
+            else (sandbox_dir / "campaign.registry.json")
+        )
+        payload = self.external_claim_campaign.run(
+            eval_report=eval_report,
+            source_registry_path=active_registry,
+            sandbox_registry_path=str(campaign_sandbox),
+            campaign_config=config_payload,
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        payload["sources"] = {
+            "eval": eval_source,
+            "campaign_config": str(config_file),
+        }
+        out_path = self.artifacts_dir / "external_claim_sandbox_campaign.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
