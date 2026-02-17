@@ -383,9 +383,26 @@ class AgenticRuntime:
         external_gate = release_status.get("gates", {}).get("external_claim_gate", {})
         market_naming = market_report.get("naming_reality", {})
         market_risk_counts = market_naming.get("risk_counts", {})
+        distance_progress = external_claim_plan.get("distance_progress", {})
+        if not isinstance(distance_progress, dict):
+            distance_progress = {}
 
         internal_remaining_distance = float(benchmark_gaps.get("remaining_distance", 0.0))
         external_claim_distance = int(external_gate.get("external_claim_distance", 0))
+        current_total_claim_distance = int(distance_progress.get("current_total_distance", external_claim_distance))
+        max_total_claim_distance = int(
+            distance_progress.get(
+                "max_total_distance",
+                int(external_gate.get("required_external_baselines", 0)),
+            )
+        )
+        total_progress_ratio = float(distance_progress.get("current_progress_ratio", 0.0))
+        projected_total_claim_distance = int(
+            distance_progress.get("projected_total_distance_after_recoverable_actions", current_total_claim_distance)
+        )
+        projected_total_progress_ratio = float(
+            distance_progress.get("projected_progress_ratio", total_progress_ratio)
+        )
         public_overclaim_rate = float(claim_calibration.get("public_overclaim_rate", 0.0))
         max_public_overclaim_rate = float(
             benchmark_progress.get("targets", {}).get("max_public_overclaim_rate", 0.0)
@@ -422,6 +439,17 @@ class AgenticRuntime:
             "distance": {
                 "internal_remaining_distance": internal_remaining_distance,
                 "external_claim_distance": external_claim_distance,
+                "total_claim_distance": current_total_claim_distance,
+                "max_total_claim_distance": max_total_claim_distance,
+                "total_progress_ratio": total_progress_ratio,
+                "projected_total_claim_distance": projected_total_claim_distance,
+                "projected_total_progress_ratio": projected_total_progress_ratio,
+                "projected_total_claim_distance_reduction": (
+                    current_total_claim_distance - projected_total_claim_distance
+                ),
+                "projected_total_progress_ratio_gain": (
+                    projected_total_progress_ratio - total_progress_ratio
+                ),
                 "public_overclaim_rate_gap": overclaim_rate_gap,
             },
             "direction": {

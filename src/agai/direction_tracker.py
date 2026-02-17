@@ -18,6 +18,22 @@ class DirectionTracker:
             "timestamp": datetime.utcnow().isoformat(),
             "internal_remaining_distance": float(distance.get("internal_remaining_distance", 0.0)),
             "external_claim_distance": int(distance.get("external_claim_distance", 0)),
+            "total_claim_distance": int(
+                distance.get("total_claim_distance", distance.get("external_claim_distance", 0))
+            ),
+            "max_total_claim_distance": int(
+                distance.get("max_total_claim_distance", distance.get("external_claim_distance", 0))
+            ),
+            "total_progress_ratio": float(distance.get("total_progress_ratio", 0.0)),
+            "projected_total_claim_distance": int(
+                distance.get(
+                    "projected_total_claim_distance",
+                    distance.get("total_claim_distance", distance.get("external_claim_distance", 0)),
+                )
+            ),
+            "projected_total_progress_ratio": float(
+                distance.get("projected_total_progress_ratio", distance.get("total_progress_ratio", 0.0))
+            ),
             "public_overclaim_rate_gap": float(distance.get("public_overclaim_rate_gap", 0.0)),
             "combined_average_reality_score": float(direction.get("combined_average_reality_score", 0.0)),
             "internal_ready": bool(direction.get("internal_ready", False)),
@@ -51,18 +67,28 @@ class DirectionTracker:
                 "latest": {},
                 "best_internal_distance": None,
                 "best_external_claim_distance": None,
+                "best_total_claim_distance": None,
                 "best_reality_score": 0.0,
+                "best_total_progress_ratio": 0.0,
                 "internal_distance_trend": 0.0,
                 "external_distance_trend": 0.0,
+                "total_distance_trend": 0.0,
                 "reality_score_trend": 0.0,
+                "total_progress_ratio_trend": 0.0,
             }
         latest = rows[-1]
         best_internal_distance = min(float(row.get("internal_remaining_distance", 0.0)) for row in rows)
         best_external_distance = min(int(row.get("external_claim_distance", 0)) for row in rows)
+        best_total_claim_distance = min(
+            int(row.get("total_claim_distance", row.get("external_claim_distance", 0))) for row in rows
+        )
         best_reality_score = max(float(row.get("combined_average_reality_score", 0.0)) for row in rows)
+        best_total_progress_ratio = max(float(row.get("total_progress_ratio", 0.0)) for row in rows)
         internal_distance_trend = 0.0
         external_distance_trend = 0.0
+        total_distance_trend = 0.0
         reality_score_trend = 0.0
+        total_progress_ratio_trend = 0.0
         if len(rows) >= 2:
             prev = rows[-2]
             internal_distance_trend = float(prev.get("internal_remaining_distance", 0.0)) - float(
@@ -71,16 +97,26 @@ class DirectionTracker:
             external_distance_trend = float(prev.get("external_claim_distance", 0.0)) - float(
                 latest.get("external_claim_distance", 0.0)
             )
+            total_distance_trend = float(
+                prev.get("total_claim_distance", prev.get("external_claim_distance", 0.0))
+            ) - float(latest.get("total_claim_distance", latest.get("external_claim_distance", 0.0)))
             reality_score_trend = float(latest.get("combined_average_reality_score", 0.0)) - float(
                 prev.get("combined_average_reality_score", 0.0)
+            )
+            total_progress_ratio_trend = float(latest.get("total_progress_ratio", 0.0)) - float(
+                prev.get("total_progress_ratio", 0.0)
             )
         return {
             "count": len(rows),
             "latest": latest,
             "best_internal_distance": best_internal_distance,
             "best_external_claim_distance": best_external_distance,
+            "best_total_claim_distance": best_total_claim_distance,
             "best_reality_score": best_reality_score,
+            "best_total_progress_ratio": best_total_progress_ratio,
             "internal_distance_trend": internal_distance_trend,
             "external_distance_trend": external_distance_trend,
+            "total_distance_trend": total_distance_trend,
             "reality_score_trend": reality_score_trend,
+            "total_progress_ratio_trend": total_progress_ratio_trend,
         }
