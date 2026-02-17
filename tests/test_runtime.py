@@ -110,6 +110,16 @@ class TestRuntime(unittest.TestCase):
         self.assertFalse(ingest_result["verified_effective"])
         self.assertTrue((self.temp_dir / "baseline_ingest_result.json").exists())
         self.assertTrue(ingest_registry.exists())
+        attest_result = runtime.run_attest_external_baseline(
+            baseline_id="external-runtime-ingest",
+            registry_path=str(ingest_registry),
+            max_metric_delta=0.05,
+            eval_path=str(self.temp_dir / "quantum_hard_suite_eval.json"),
+        )
+        self.assertEqual(attest_result["status"], "ok")
+        self.assertTrue(attest_result["attestation_passed"])
+        self.assertTrue(attest_result["verified_effective"])
+        self.assertTrue((self.temp_dir / "baseline_attest_result.json").exists())
         release_status = runtime.run_release_status()
         self.assertIn("release_ready_internal", release_status)
         self.assertIn("external_claim_ready", release_status)

@@ -8,6 +8,7 @@ from typing import Any
 
 from .adapters import HeuristicSmallModelAdapter, OllamaAdapter
 from .alignment import ReflectionDebateLoop
+from .baseline_attestation import ExternalBaselineAttestationService
 from .baseline_ingestion import ExternalBaselineIngestionService
 from .baseline_registry import DeclaredBaselineComparator
 from .benchmark_tracker import BenchmarkTracker
@@ -257,6 +258,44 @@ class AgenticRuntime:
         )
         payload = service.ingest_file(input_path=input_path)
         out_path = self.artifacts_dir / "baseline_ingest_result.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_attest_external_baseline(
+        self,
+        baseline_id: str,
+        registry_path: str | None = None,
+        max_metric_delta: float = 0.02,
+        eval_path: str | None = None,
+    ) -> dict[str, Any]:
+        if eval_path:
+            path = Path(eval_path)
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"eval artifact not found: {path}",
+                    "baseline_id": baseline_id,
+                }
+            eval_report = json.loads(path.read_text(encoding="utf-8"))
+            source = "explicit-eval-artifact"
+        else:
+            path = self.artifacts_dir / "quantum_hard_suite_eval.json"
+            if path.exists():
+                eval_report = json.loads(path.read_text(encoding="utf-8"))
+                source = "cached-eval-artifact"
+            else:
+                eval_report = self.run_quantum_hard_suite()
+                source = "fresh-evaluation"
+        service = ExternalBaselineAttestationService(
+            registry_path=registry_path or "config/frontier_baselines.json"
+        )
+        payload = service.attest_from_eval_report(
+            baseline_id=baseline_id,
+            eval_report=eval_report,
+            max_metric_delta=max_metric_delta,
+        )
+        payload["input_source"] = source
+        out_path = self.artifacts_dir / "baseline_attest_result.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 

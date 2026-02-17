@@ -35,6 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
     ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
     ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
     ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    attest = sub.add_parser("attest-external-baseline", help="Replay-check external baseline against eval artifact")
+    attest.add_argument("--baseline-id", required=True, help="Baseline ID in registry")
+    attest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    attest.add_argument("--max-metric-delta", type=float, default=0.02, help="Maximum allowed absolute metric delta")
+    attest.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
     sub.add_parser("scale-path", help="Run scale-path decision framework and scenario analysis")
     return parser
 
@@ -68,6 +73,13 @@ def main() -> None:
         output = runtime.run_release_status()
     elif args.command == "ingest-external-baseline":
         output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)
+    elif args.command == "attest-external-baseline":
+        output = runtime.run_attest_external_baseline(
+            baseline_id=args.baseline_id,
+            registry_path=args.registry_path,
+            max_metric_delta=float(args.max_metric_delta),
+            eval_path=str(args.eval_path or "") or None,
+        )
     elif args.command == "scale-path":
         output = runtime.run_scale_path_decision_framework()
     else:
