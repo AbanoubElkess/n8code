@@ -82,6 +82,15 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_autofill.add_argument("--scaffold-output-dir", default="", help="Optional output directory for scaffold templates")
     campaign_autofill.add_argument("--autofill-output-dir", default="", help="Optional output directory for autofilled artifacts")
     campaign_autofill.add_argument("--output", default="", help="Optional output path for generated campaign config json")
+    campaign_evidence_schema = sub.add_parser(
+        "external-claim-campaign-evidence-schema",
+        help="Generate canonical evidence-map schema from current claim blocker templates",
+    )
+    campaign_evidence_schema.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    campaign_evidence_schema.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    campaign_evidence_schema.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for schema defaults")
+    campaign_evidence_schema.add_argument("--scaffold-output-dir", default="", help="Optional output directory for scaffold templates")
+    campaign_evidence_schema.add_argument("--output", default="", help="Optional output path for generated evidence map json")
     replay = sub.add_parser(
         "external-claim-replay",
         help="Run attestation replay for auto-fixable external-claim rows and report distance deltas",
@@ -239,6 +248,14 @@ def main() -> None:
             evidence_map_path=str(args.evidence_map),
             scaffold_output_dir=str(args.scaffold_output_dir or "") or None,
             autofill_output_dir=str(args.autofill_output_dir or "") or None,
+            output_path=str(args.output or "") or None,
+        )
+    elif args.command == "external-claim-campaign-evidence-schema":
+        output = runtime.run_external_claim_campaign_evidence_schema(
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            default_max_metric_delta=float(args.max_metric_delta),
+            scaffold_output_dir=str(args.scaffold_output_dir or "") or None,
             output_path=str(args.output or "") or None,
         )
     elif args.command == "external-claim-replay":

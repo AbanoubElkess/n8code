@@ -24,6 +24,7 @@ from .external_claim_sandbox import ExternalClaimSandboxPipeline
 from .external_claim_campaign import ExternalClaimSandboxCampaignRunner
 from .external_claim_campaign_autofill import ExternalClaimCampaignAutofillService
 from .external_claim_campaign_draft import ExternalClaimCampaignDraftService
+from .external_claim_campaign_evidence_schema import ExternalClaimCampaignEvidenceSchemaService
 from .external_claim_campaign_readiness import ExternalClaimCampaignReadinessService
 from .external_claim_campaign_scaffold import ExternalClaimCampaignScaffoldService
 from .external_claim_campaign_validator import ExternalClaimCampaignValidatorService
@@ -79,6 +80,7 @@ class AgenticRuntime:
             policy_path=str(self.release_status.policy_path)
         )
         self.external_claim_campaign_draft = ExternalClaimCampaignDraftService()
+        self.external_claim_campaign_evidence_schema = ExternalClaimCampaignEvidenceSchemaService()
         self.external_claim_campaign_readiness = ExternalClaimCampaignReadinessService()
         self.external_claim_campaign_scaffold = ExternalClaimCampaignScaffoldService()
         self.external_claim_campaign_autofill = ExternalClaimCampaignAutofillService()
@@ -864,6 +866,97 @@ class AgenticRuntime:
             ),
         }
         out_path = self.artifacts_dir / "external_claim_campaign_autofill.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_external_claim_campaign_evidence_schema(
+        self,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        default_max_metric_delta: float = 0.02,
+        scaffold_output_dir: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
+        context = self._prepare_external_claim_context(
+            registry_path=registry_path,
+            eval_path=eval_path,
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        if context.get("status") != "ok":
+            return context
+        eval_report = context["eval_report"]
+        eval_source = str(context["eval_source"])
+        active_registry = str(context["active_registry"])
+        claim_plan = context["claim_plan"]
+
+        scaffold_dir = (
+            Path(scaffold_output_dir)
+            if scaffold_output_dir
+            else (self.artifacts_dir / "campaign_scaffold")
+        )
+        scaffold_payload = self.external_claim_campaign_scaffold.build(
+            claim_plan=claim_plan,
+            eval_report=eval_report,
+            registry_path=active_registry,
+            output_dir=str(scaffold_dir),
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        scaffold_payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+        }
+        scaffold_payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+
+        schema_output = (
+            Path(output_path)
+            if output_path
+            else (self.artifacts_dir / "campaign_evidence_map.generated.json")
+        )
+        schema_payload = self.external_claim_campaign_evidence_schema.build(
+            scaffold_payload=scaffold_payload if isinstance(scaffold_payload, dict) else {},
+            eval_report=eval_report if isinstance(eval_report, dict) else {},
+            output_path=str(schema_output),
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        schema_payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+            "scaffold_output_dir": str(scaffold_dir),
+        }
+        schema_payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+        payload = {
+            "status": str(schema_payload.get("status", "error")),
+            "sources": {
+                "eval": eval_source,
+                "release_status": "computed-in-process",
+            },
+            "plan_summary": {
+                "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+                "estimated_total_distance_after_recoverable_actions": int(
+                    claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+                ),
+                "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+            },
+            "scaffold": scaffold_payload,
+            "schema": schema_payload,
+            "disclaimer": (
+                "Evidence schema generation does not infer evidence values. "
+                "You must fill generated fields with real sources before running autofill/readiness."
+            ),
+        }
+        out_path = self.artifacts_dir / "external_claim_campaign_evidence_schema.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
