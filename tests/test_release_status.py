@@ -227,6 +227,56 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
             report["gates"]["external_claim_calibration_gate"]["missing_metrics"],
         )
 
+    def test_external_claim_distance_uses_unique_external_evidence(self) -> None:
+        policy_path = self._write_policy(min_external=2)
+        evaluator = ReleaseStatusEvaluator(policy_path=str(policy_path))
+        report = evaluator.evaluate(
+            {
+                "benchmark_progress": {
+                    "ready": True,
+                    "gaps": {"remaining_distance": 0.0},
+                },
+                "declared_baseline_comparison": {
+                    "comparisons": [
+                        {
+                            "baseline_id": "external-a",
+                            "source_type": "external_reported",
+                            "source": "arxiv:2501.12948",
+                            "source_date": "2026-02-17",
+                            "suite_id": "quantum_hard_suite_v2_adversarial",
+                            "scoring_protocol": "src/agai/quantum_suite.py:263",
+                            "evidence": {
+                                "citation": "arxiv:2501.12948",
+                                "artifact_hash": "sha256:shared",
+                            },
+                            "comparability": {"comparable": True},
+                        },
+                        {
+                            "baseline_id": "external-b-duplicate",
+                            "source_type": "external_reported",
+                            "source": "arxiv:2501.12948",
+                            "source_date": "2026-02-17",
+                            "suite_id": "quantum_hard_suite_v2_adversarial",
+                            "scoring_protocol": "src/agai/quantum_suite.py:263",
+                            "evidence": {
+                                "citation": "arxiv:2501.12948",
+                                "artifact_hash": "sha256:shared",
+                            },
+                            "comparability": {"comparable": True},
+                        },
+                    ]
+                },
+                "claim_calibration": {
+                    "combined_average_reality_score": 0.95,
+                    "public_overclaim_rate": 0.02,
+                },
+            }
+        )
+        self.assertFalse(report["external_claim_ready"])
+        self.assertEqual(report["gates"]["external_claim_gate"]["comparable_external_baselines"], 1)
+        self.assertEqual(report["gates"]["external_claim_gate"]["required_external_baselines"], 2)
+        self.assertEqual(report["gates"]["external_claim_gate"]["external_claim_distance"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

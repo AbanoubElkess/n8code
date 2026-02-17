@@ -228,12 +228,19 @@ class ReleaseStatusEvaluator:
             if isinstance(summary, dict):
                 return int(summary.get("comparable_external_baselines", 0))
             return 0
+        seen_fingerprints: set[str] = set()
         count = 0
         for row in rows:
             source_type = str(row.get("source_type", "")).lower()
             comparable = bool(row.get("comparability", {}).get("comparable", False))
-            if comparable and source_type.startswith("external"):
-                count += 1
+            if not comparable or not source_type.startswith("external"):
+                continue
+            fingerprint = self._external_evidence_fingerprint(row)
+            if fingerprint:
+                if fingerprint in seen_fingerprints:
+                    continue
+                seen_fingerprints.add(fingerprint)
+            count += 1
         return count
 
     def _external_blockers(self, eval_report: dict[str, Any]) -> dict[str, int]:
@@ -274,3 +281,16 @@ class ReleaseStatusEvaluator:
             if not comparable:
                 count += 1
         return count
+
+    def _external_evidence_fingerprint(self, row: dict[str, Any]) -> str:
+        source = str(row.get("source", "")).strip().lower()
+        source_date = str(row.get("source_date", "")).strip().lower()
+        suite_id = str(row.get("suite_id", "")).strip().lower()
+        scoring_protocol = str(row.get("scoring_protocol", "")).strip().lower()
+        evidence = row.get("evidence", {})
+        evidence_payload = evidence if isinstance(evidence, dict) else {}
+        citation = str(evidence_payload.get("citation", "")).strip().lower()
+        artifact_hash = str(evidence_payload.get("artifact_hash", "")).strip().lower()
+        if not source and not citation:
+            return ""
+        return "|".join([source, source_date, suite_id, scoring_protocol, citation, artifact_hash])

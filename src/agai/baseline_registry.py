@@ -51,6 +51,7 @@ class DeclaredBaselineComparator:
             )
             for entry in baselines
         ]
+        self._apply_external_uniqueness_guard(comparisons)
         comparable = [row for row in comparisons if bool(row["comparability"]["comparable"])]
         comparable_external = [row for row in comparable if str(row.get("source_type", "")).lower().startswith("external")]
         comparable_internal = [row for row in comparable if str(row.get("source_type", "")).lower().startswith("internal")]
@@ -176,6 +177,7 @@ class DeclaredBaselineComparator:
             "comparable": comparable,
             "reasons": reasons,
         }
+        evidence_payload = evidence if isinstance(evidence, dict) else {}
         return {
             "baseline_id": baseline_id,
             "label": str(baseline.get("label", baseline_id)),
@@ -186,6 +188,13 @@ class DeclaredBaselineComparator:
             "scoring_protocol": expected_scoring,
             "comparability": comparability,
             "verification": evidence_status,
+            "evidence": {
+                "citation": str(evidence_payload.get("citation", "")),
+                "artifact_hash": str(evidence_payload.get("artifact_hash", "")),
+                "retrieval_date": str(evidence_payload.get("retrieval_date", "")),
+                "verification_method": str(evidence_payload.get("verification_method", "")),
+                "replication_status": str(evidence_payload.get("replication_status", "")),
+            },
             "metric_comparison": metric_comparison,
             "wins": wins,
             "losses": losses,
@@ -193,6 +202,48 @@ class DeclaredBaselineComparator:
             "mean_advantage": round(mean_advantage, 6),
             "notes": str(baseline.get("notes", "")),
         }
+
+    def _apply_external_uniqueness_guard(self, comparisons: list[dict[str, Any]]) -> None:
+        seen: dict[str, str] = {}
+        for row in comparisons:
+            source_type = str(row.get("source_type", "")).strip().lower()
+            if not source_type.startswith("external"):
+                continue
+            comparability = row.get("comparability", {})
+            if not isinstance(comparability, dict):
+                continue
+            if not bool(comparability.get("comparable", False)):
+                continue
+            fingerprint = self._external_evidence_fingerprint(row)
+            if not fingerprint:
+                continue
+            baseline_id = str(row.get("baseline_id", "unknown-baseline"))
+            first_id = seen.get(fingerprint)
+            if first_id is None:
+                seen[fingerprint] = baseline_id
+                continue
+            reasons = comparability.get("reasons", [])
+            if not isinstance(reasons, list):
+                reasons = []
+            duplicate_reason = f"duplicate external evidence with baseline {first_id}"
+            if duplicate_reason not in reasons:
+                reasons.append(duplicate_reason)
+            comparability["comparable"] = False
+            comparability["reasons"] = reasons
+            row["comparability"] = comparability
+
+    def _external_evidence_fingerprint(self, row: dict[str, Any]) -> str:
+        source = str(row.get("source", "")).strip().lower()
+        source_date = str(row.get("source_date", "")).strip().lower()
+        suite_id = str(row.get("suite_id", "")).strip().lower()
+        scoring_protocol = str(row.get("scoring_protocol", "")).strip().lower()
+        evidence = row.get("evidence", {})
+        evidence_payload = evidence if isinstance(evidence, dict) else {}
+        citation = str(evidence_payload.get("citation", "")).strip().lower()
+        artifact_hash = str(evidence_payload.get("artifact_hash", "")).strip().lower()
+        if not source and not citation:
+            return ""
+        return "|".join([source, source_date, suite_id, scoring_protocol, citation, artifact_hash])
 
     def _evaluate_evidence(
         self,

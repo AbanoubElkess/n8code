@@ -142,6 +142,71 @@ class TestDeclaredBaselineComparator(unittest.TestCase):
         self.assertFalse(row["comparability"]["comparable"])
         self.assertIn("external baseline missing replicated-internal-harness status", row["comparability"]["reasons"])
 
+    def test_duplicate_external_evidence_is_not_counted_twice(self) -> None:
+        registry_path = self.temp_dir / "frontier_baselines.json"
+        registry = {
+            "registry_version": "test-v1",
+            "baselines": [
+                {
+                    "baseline_id": "external-a",
+                    "label": "External A",
+                    "source_type": "external_reported",
+                    "source": "arxiv:2501.12948",
+                    "source_date": "2026-02-17",
+                    "verified": True,
+                    "enabled": True,
+                    "suite_id": "quantum_hard_suite_v2_adversarial",
+                    "scoring_protocol": "src/agai/quantum_suite.py:263",
+                    "evidence": {
+                        "citation": "arxiv:2501.12948",
+                        "artifact_hash": "sha256:shared",
+                        "retrieval_date": "2026-02-17",
+                        "verification_method": "manual extraction",
+                        "replication_status": "replicated-internal-harness",
+                    },
+                    "metrics": {"quality": 0.90},
+                },
+                {
+                    "baseline_id": "external-b-duplicate",
+                    "label": "External B Duplicate",
+                    "source_type": "external_reported",
+                    "source": "arxiv:2501.12948",
+                    "source_date": "2026-02-17",
+                    "verified": True,
+                    "enabled": True,
+                    "suite_id": "quantum_hard_suite_v2_adversarial",
+                    "scoring_protocol": "src/agai/quantum_suite.py:263",
+                    "evidence": {
+                        "citation": "arxiv:2501.12948",
+                        "artifact_hash": "sha256:shared",
+                        "retrieval_date": "2026-02-17",
+                        "verification_method": "manual extraction",
+                        "replication_status": "replicated-internal-harness",
+                    },
+                    "metrics": {"quality": 0.90},
+                },
+            ],
+        }
+        registry_path.write_text(json.dumps(registry), encoding="utf-8")
+        eval_report = {
+            "benchmark_provenance": {"scoring_reference": "src/agai/quantum_suite.py:263"},
+            "benchmark_progress": {
+                "suite_id": "quantum_hard_suite_v2_adversarial",
+                "observed": {"quality": 0.92},
+            },
+        }
+        report = DeclaredBaselineComparator(registry_path=str(registry_path)).compare(eval_report)
+        self.assertEqual(report["summary"]["comparable_external_baselines"], 1)
+        self.assertEqual(report["summary"]["non_comparable_baselines"], 1)
+        duplicate_row = next(
+            row for row in report["comparisons"] if row["baseline_id"] == "external-b-duplicate"
+        )
+        self.assertFalse(duplicate_row["comparability"]["comparable"])
+        self.assertIn(
+            "duplicate external evidence with baseline external-a",
+            duplicate_row["comparability"]["reasons"],
+        )
+
     def test_compare_without_registry_file(self) -> None:
         eval_report = {
             "benchmark_provenance": {"scoring_reference": "src/agai/quantum_suite.py:263"},
