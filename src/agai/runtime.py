@@ -16,6 +16,7 @@ from .evaluation import Evaluator
 from .hypothesis import HypothesisExplorer
 from .market import MarketGapAnalyzer
 from .memory import ProvenanceMemory
+from .moonshot_tracker import MoonshotTracker
 from .orchestration import AgentRuntime, MultiAgentOrchestrator
 from .qec_tools import QECSimulatorHook
 from .scale_path import ScalePathDecisionEngine
@@ -50,6 +51,7 @@ class AgenticRuntime:
         self.distiller = TraceDistiller()
         self.evaluator = Evaluator()
         self.benchmark_tracker = BenchmarkTracker(history_path=str(self.artifacts_dir / "benchmark_history.jsonl"))
+        self.moonshot_tracker = MoonshotTracker(history_path=str(self.artifacts_dir / "moonshot_history.jsonl"))
         self.declared_baseline_comparator = DeclaredBaselineComparator()
         self.tool_engine = ToolReasoningEngine(self.tool_registry)
         self.agents = self._build_agents(use_ollama=use_ollama, ollama_model=ollama_model)
@@ -222,6 +224,11 @@ class AgenticRuntime:
         eval_report["benchmark_tracking"] = {
             "snapshot": snapshot,
             "summary": self.benchmark_tracker.summary(),
+        }
+        moonshot_snapshot = self.moonshot_tracker.record(eval_report)
+        eval_report["moonshot_tracking"] = {
+            "snapshot": moonshot_snapshot,
+            "summary": self.moonshot_tracker.summary(),
         }
         out_path = self.artifacts_dir / "quantum_hard_suite_eval.json"
         out_path.write_text(json.dumps(eval_report, indent=2, ensure_ascii=True), encoding="utf-8")
