@@ -23,6 +23,7 @@ from .external_claim_replay import ExternalClaimReplayRunner
 from .external_claim_sandbox import ExternalClaimSandboxPipeline
 from .external_claim_campaign import ExternalClaimSandboxCampaignRunner
 from .external_claim_campaign_draft import ExternalClaimCampaignDraftService
+from .external_claim_campaign_scaffold import ExternalClaimCampaignScaffoldService
 from .hypothesis import HypothesisExplorer
 from .external_claim_promotion import ExternalClaimPromotionService
 from .market import MarketGapAnalyzer
@@ -75,6 +76,7 @@ class AgenticRuntime:
             policy_path=str(self.release_status.policy_path)
         )
         self.external_claim_campaign_draft = ExternalClaimCampaignDraftService()
+        self.external_claim_campaign_scaffold = ExternalClaimCampaignScaffoldService()
         self.external_claim_promotion = ExternalClaimPromotionService(
             policy_path=str(self.release_status.policy_path)
         )
@@ -538,6 +540,63 @@ class AgenticRuntime:
         campaign_output.write_text(json.dumps(campaign_config, indent=2, ensure_ascii=True), encoding="utf-8")
         payload["campaign_output_path"] = str(campaign_output)
         out_path = self.artifacts_dir / "external_claim_campaign_draft.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_external_claim_campaign_scaffold(
+        self,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        default_max_metric_delta: float = 0.02,
+        output_dir: str | None = None,
+    ) -> dict[str, Any]:
+        if eval_path:
+            path = Path(eval_path)
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"eval artifact not found: {path}",
+                }
+            eval_report = json.loads(path.read_text(encoding="utf-8"))
+            eval_source = "explicit-eval-artifact"
+        else:
+            eval_report, eval_source = self._load_or_run_eval_report()
+
+        active_registry = registry_path or "config/frontier_baselines.json"
+        comparator = DeclaredBaselineComparator(registry_path=active_registry)
+        eval_report["declared_baseline_comparison"] = comparator.compare(eval_report)
+        release_status = self.release_status.evaluate(eval_report)
+        claim_plan = self.external_claim_planner.plan(
+            eval_report=eval_report,
+            release_status=release_status,
+            registry_path=active_registry,
+            default_max_metric_delta=default_max_metric_delta,
+        )
+
+        scaffold_dir = (
+            Path(output_dir)
+            if output_dir
+            else (self.artifacts_dir / "campaign_scaffold")
+        )
+        payload = self.external_claim_campaign_scaffold.build(
+            claim_plan=claim_plan,
+            eval_report=eval_report,
+            registry_path=active_registry,
+            output_dir=str(scaffold_dir),
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+        }
+        payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+        out_path = self.artifacts_dir / "external_claim_campaign_scaffold.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
