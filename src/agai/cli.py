@@ -34,6 +34,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("release-status", help="Show release claim scope status from latest evaluation artifact")
     sub.add_parser("direction-status", help="Show benchmark, claim-distance, and naming-risk direction telemetry")
     sub.add_parser("external-claim-plan", help="Generate actionable remediation plan for external-claim distance")
+    campaign_draft = sub.add_parser(
+        "external-claim-campaign-draft",
+        help="Compile plan + local payload mappings into validated campaign draft config",
+    )
+    campaign_draft.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    campaign_draft.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    campaign_draft.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for drafted baseline runs")
+    campaign_draft.add_argument("--patch-map", default="", help="Optional path to patch-overrides map json keyed by baseline_id")
+    campaign_draft.add_argument("--ingest-manifest", default="", help="Optional path to ingest manifest json (list or object)")
+    campaign_draft.add_argument("--output", default="", help="Optional output path for generated campaign config json")
     replay = sub.add_parser(
         "external-claim-replay",
         help="Run attestation replay for auto-fixable external-claim rows and report distance deltas",
@@ -150,6 +160,15 @@ def main() -> None:
         output = runtime.run_direction_status()
     elif args.command == "external-claim-plan":
         output = runtime.run_external_claim_plan()
+    elif args.command == "external-claim-campaign-draft":
+        output = runtime.run_external_claim_campaign_draft(
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            default_max_metric_delta=float(args.max_metric_delta),
+            patch_map_path=str(args.patch_map or "") or None,
+            ingest_manifest_path=str(args.ingest_manifest or "") or None,
+            output_path=str(args.output or "") or None,
+        )
     elif args.command == "external-claim-replay":
         output = runtime.run_external_claim_replay(
             registry_path=str(args.registry_path),
