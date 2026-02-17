@@ -5,6 +5,11 @@
     "moonshot_general_benchmarks_gate": false,
     "min_comparable_external_baselines_for_external_claim": 2
   },
+  "direction_gates": {
+    "min_combined_average_reality_score": 0.9,
+    "max_market_high_risk_opportunities": 0,
+    "max_market_medium_risk_opportunities": 2
+  },
   "seed_control": {
     "enabled": true,
     "default_seed": 20260217

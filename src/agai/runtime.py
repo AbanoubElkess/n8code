@@ -13,6 +13,7 @@ from .baseline_ingestion import ExternalBaselineIngestionService
 from .baseline_registry import DeclaredBaselineComparator
 from .benchmark_tracker import BenchmarkTracker
 from .compute_controller import TestTimeComputeController
+from .direction_tracker import DirectionTracker
 from .distillation import TraceDistiller
 from .evaluation import Evaluator
 from .hypothesis import HypothesisExplorer
@@ -58,6 +59,7 @@ class AgenticRuntime:
         self.evaluator = Evaluator()
         self.benchmark_tracker = BenchmarkTracker(history_path=str(self.artifacts_dir / "benchmark_history.jsonl"))
         self.moonshot_tracker = MoonshotTracker(history_path=str(self.artifacts_dir / "moonshot_history.jsonl"))
+        self.direction_tracker = DirectionTracker(history_path=str(self.artifacts_dir / "direction_history.jsonl"))
         self.declared_baseline_comparator = DeclaredBaselineComparator()
         self.tool_engine = ToolReasoningEngine(self.tool_registry)
         self.agents = self._build_agents(use_ollama=use_ollama, ollama_model=ollama_model)
@@ -165,6 +167,41 @@ class AgenticRuntime:
         if report_path.exists():
             return json.loads(report_path.read_text(encoding="utf-8")), "cached-artifact"
         return self.generate_market_gap_report(), "fresh-generation"
+
+    def _load_direction_policy(self) -> dict[str, float | int]:
+        default_policy: dict[str, float | int] = {
+            "min_combined_average_reality_score": 0.90,
+            "max_market_high_risk_opportunities": 0,
+            "max_market_medium_risk_opportunities": 2,
+        }
+        policy_path = Path("config/repro_policy.json")
+        if not policy_path.exists():
+            return default_policy
+        try:
+            payload = json.loads(policy_path.read_text(encoding="utf-8"))
+            gates = payload.get("direction_gates", {})
+            return {
+                "min_combined_average_reality_score": float(
+                    gates.get(
+                        "min_combined_average_reality_score",
+                        default_policy["min_combined_average_reality_score"],
+                    )
+                ),
+                "max_market_high_risk_opportunities": int(
+                    gates.get(
+                        "max_market_high_risk_opportunities",
+                        default_policy["max_market_high_risk_opportunities"],
+                    )
+                ),
+                "max_market_medium_risk_opportunities": int(
+                    gates.get(
+                        "max_market_medium_risk_opportunities",
+                        default_policy["max_market_medium_risk_opportunities"],
+                    )
+                ),
+            }
+        except Exception:  # noqa: BLE001
+            return default_policy
 
     def run_quantum_research_demo(self, question: str) -> dict[str, Any]:
         task = TaskSpec(
@@ -282,6 +319,7 @@ class AgenticRuntime:
     def run_direction_status(self) -> dict[str, Any]:
         eval_report, eval_source = self._load_or_run_eval_report()
         market_report, market_source = self._load_or_generate_market_report()
+        direction_policy = self._load_direction_policy()
         release_status = self.release_status.evaluate(eval_report)
         benchmark_progress = eval_report.get("benchmark_progress", {})
         benchmark_gaps = benchmark_progress.get("gaps", {})
@@ -297,16 +335,29 @@ class AgenticRuntime:
             benchmark_progress.get("targets", {}).get("max_public_overclaim_rate", 0.0)
         )
         overclaim_rate_gap = max(0.0, public_overclaim_rate - max_public_overclaim_rate)
+        combined_average_reality_score = float(claim_calibration.get("combined_average_reality_score", 0.0))
+        market_high_risk = int(market_risk_counts.get("high", 0))
+        market_medium_risk = int(market_risk_counts.get("medium", 0))
+        min_combined_reality = float(direction_policy["min_combined_average_reality_score"])
+        max_high_risk = int(direction_policy["max_market_high_risk_opportunities"])
+        max_medium_risk = int(direction_policy["max_market_medium_risk_opportunities"])
+        naming_reality_gate_pass = (
+            combined_average_reality_score >= min_combined_reality
+            and market_high_risk <= max_high_risk
+            and market_medium_risk <= max_medium_risk
+        )
 
         next_priority = "maintain calibration and continue external replication coverage"
         if internal_remaining_distance > 1e-9:
             next_priority = "close internal benchmark remaining_distance before new claim scope changes"
+        elif not naming_reality_gate_pass:
+            next_priority = "reduce naming-risk and raise combined reality score before broadening claim language"
         elif external_claim_distance > 0:
             next_priority = "ingest and attest additional external baselines to reduce external_claim_distance"
         elif overclaim_rate_gap > 1e-9:
             next_priority = "reduce overclaim rate to stay below benchmark target"
 
-        payload = {
+        payload: dict[str, Any] = {
             "status": "ok",
             "sources": {
                 "eval": eval_source,
@@ -321,19 +372,41 @@ class AgenticRuntime:
                 "internal_ready": bool(benchmark_progress.get("ready", False)),
                 "external_claim_ready": bool(release_status.get("external_claim_ready", False)),
                 "claim_scope": str(release_status.get("claim_scope", "unknown")),
-                "combined_average_reality_score": float(
-                    claim_calibration.get("combined_average_reality_score", 0.0)
-                ),
-                "market_high_risk_opportunities": int(market_risk_counts.get("high", 0)),
-                "market_medium_risk_opportunities": int(market_risk_counts.get("medium", 0)),
+                "combined_average_reality_score": combined_average_reality_score,
+                "market_high_risk_opportunities": market_high_risk,
+                "market_medium_risk_opportunities": market_medium_risk,
+            },
+            "gates": {
+                "naming_reality_gate": {
+                    "pass": naming_reality_gate_pass,
+                    "reason": (
+                        "naming and calibration thresholds satisfied"
+                        if naming_reality_gate_pass
+                        else "naming and calibration thresholds not satisfied"
+                    ),
+                    "combined_average_reality_score": combined_average_reality_score,
+                    "min_combined_average_reality_score": min_combined_reality,
+                    "market_high_risk_opportunities": market_high_risk,
+                    "max_market_high_risk_opportunities": max_high_risk,
+                    "market_medium_risk_opportunities": market_medium_risk,
+                    "max_market_medium_risk_opportunities": max_medium_risk,
+                }
             },
             "blockers": {
                 "external_claim_blockers": external_gate.get("blockers", {}),
+            },
+            "policy": {
+                "direction_gates": direction_policy,
             },
             "next_priority": next_priority,
             "disclaimer": (
                 "Direction status is internal calibration telemetry and does not imply external leaderboard parity."
             ),
+        }
+        tracking_snapshot = self.direction_tracker.record(payload)
+        payload["tracking"] = {
+            "snapshot": tracking_snapshot,
+            "summary": self.direction_tracker.summary(),
         }
         out_path = self.artifacts_dir / "direction_status.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
