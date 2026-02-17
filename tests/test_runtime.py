@@ -34,6 +34,8 @@ class TestRuntime(unittest.TestCase):
 
         eval_report = runtime.run_quantum_hard_suite()
         self.assertIn("scorecard", eval_report)
+        self.assertIn("holdout_scorecard", eval_report)
+        self.assertIn("specialist_reference", eval_report)
         self.assertIn("benchmark_progress", eval_report)
         self.assertIn("remaining_distance", eval_report["benchmark_progress"]["gaps"])
         self.assertIn("case_margin_gap", eval_report["benchmark_progress"]["gaps"])

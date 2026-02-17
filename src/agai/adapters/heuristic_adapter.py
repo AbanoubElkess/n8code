@@ -20,6 +20,8 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
         if not match:
             return "generalist"
         role = match.group(1).strip().lower()
+        if "generalist" in role:
+            return "generalist"
         if "critic" in role:
             return "critic"
         if "physic" in role or "quantum" in role:
@@ -114,6 +116,13 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
                         "Evaluate stabilizer timing variants, measure logical error rate, enforce runtime constraint, "
                         "and confirm testable reproducibility."
                     )
+            elif role == "generalist":
+                proposal = (
+                    "Try one baseline and one variant, then check if outcomes differ."
+                )
+                risks = "Risk: assumptions may not transfer."
+                experiment = "Run a simple validation and then a counter-check."
+                keywords = "hypothesis, validation, uncertainty, replication"
             else:
                 proposal = planner_proposal
                 risks = "Risk: over-optimization for one benchmark task can reduce generalization."
@@ -125,18 +134,19 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
                         "Prioritize flux noise mitigation candidates, then run control parameter ablations with "
                         "falsification gates before final selection."
                     )
-            keywords = (
-                "decoder, syndrome, logical error rate, latency, ablation, falsification, tradeoff, confidence interval"
-            )
-            if is_flux_case:
+            if role != "generalist":
                 keywords = (
-                    "flux noise, mitigation, control parameter, falsification, logical error rate, "
-                    "tradeoff, confidence interval"
+                    "decoder, syndrome, logical error rate, latency, ablation, falsification, tradeoff, confidence interval"
                 )
-            if is_stabilizer_case:
-                keywords = (
-                    "stabilizer, logical error rate, runtime constraint, testable, falsification, ablation"
-                )
+                if is_flux_case:
+                    keywords = (
+                        "flux noise, mitigation, control parameter, falsification, logical error rate, "
+                        "tradeoff, confidence interval"
+                    )
+                if is_stabilizer_case:
+                    keywords = (
+                        "stabilizer, logical error rate, runtime constraint, testable, falsification, ablation"
+                    )
         else:
             proposal = "Use constrained multi-agent decomposition with explicit budget gates."
             risks = (

@@ -81,7 +81,18 @@ class TestOrchestration(unittest.TestCase):
         self.assertIn("final_answer", result.outcomes)
         self.assertEqual(result.contradictions, [])
 
+    def test_generalist_baseline_mode(self) -> None:
+        task = TaskSpec(
+            goal="Given rising flux noise, propose mitigation and falsification path.",
+            constraints=["budget"],
+            success_metric="quality",
+            budget={"max_tokens": 1200, "max_latency_ms": 20000, "max_energy_joules": 60, "max_usd": 0.05},
+            deadline="now",
+            domain="quantum-device-physics",
+        )
+        result = self.orch.run_single_agent_baseline_with_mode(task, agent_id="planner", mode="generalist")
+        self.assertEqual(result.outcomes.get("baseline_mode"), "generalist")
+
 
 if __name__ == "__main__":
     unittest.main()
-

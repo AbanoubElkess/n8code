@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import unittest
 
-from agai.quantum_suite import default_quantum_suite, evaluate_suite_responses, score_quantum_answer
+from agai.quantum_suite import default_quantum_suite, evaluate_suite_responses, holdout_quantum_suite, score_quantum_answer
 
 
 class TestQuantumSuite(unittest.TestCase):
@@ -27,7 +27,22 @@ class TestQuantumSuite(unittest.TestCase):
         self.assertEqual(len(results), len(suite))
         self.assertTrue(all(0.0 <= r.score <= 1.0 for r in results))
 
+    def test_holdout_suite_present(self) -> None:
+        holdout = holdout_quantum_suite()
+        self.assertEqual(len(holdout), 3)
+        self.assertTrue(all(case.case_id.endswith("-H") for case in holdout))
+
+    def test_keyword_stuffing_penalty(self) -> None:
+        expected = "decoder tradeoff syndrome error rate latency ablation"
+        stuffed = "decoder decoder decoder syndrome syndrome tradeoff error rate ablation ablation decoder"
+        balanced = (
+            "Compare two decoder variants, report error-rate tradeoff and runtime latency, "
+            "then run an ablation test with falsification."
+        )
+        stuffed_score = score_quantum_answer(expected, stuffed)
+        balanced_score = score_quantum_answer(expected, balanced)
+        self.assertLess(stuffed_score, balanced_score)
+
 
 if __name__ == "__main__":
     unittest.main()
-

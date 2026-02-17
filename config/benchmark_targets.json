@@ -5,7 +5,9 @@
     "min_case_margin": 0.1,
     "min_pass_rate": 1.0,
     "min_quality": 0.8,
-    "min_aggregate_delta": 0.3
+    "min_aggregate_delta": 0.3,
+    "min_holdout_quality": 0.72,
+    "max_public_holdout_quality_delta": 0.2
   },
   "notes": "Release-oriented benchmark targets for hard-suite progress tracking."
 }
