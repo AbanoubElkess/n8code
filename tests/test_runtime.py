@@ -32,6 +32,10 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("hypothesis_sandbox", demo)
         self.assertIn("acceptance_rate", demo["hypothesis_sandbox"])
         self.assertIn("qec_simulator_hook", demo["tool_reasoning"])
+        qec_tool = demo["tool_reasoning"]["qec_simulator_hook"]
+        self.assertTrue(qec_tool["ok"])
+        self.assertIn("status", qec_tool["output"])
+        self.assertIn("consistency", qec_tool["output"])
         self.assertTrue((self.temp_dir / "quantum_demo_output.json").exists())
 
         eval_report = runtime.run_quantum_hard_suite()
