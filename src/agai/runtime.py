@@ -21,6 +21,7 @@ from .memory import ProvenanceMemory
 from .moonshot_tracker import MoonshotTracker
 from .orchestration import AgentRuntime, MultiAgentOrchestrator
 from .qec_tools import QECSimulatorHook
+from .reality_guard import RealityGuard
 from .release_status import ReleaseStatusEvaluator
 from .scale_path import ScalePathDecisionEngine
 from .research_guidance import ResearchGuidanceEngine
@@ -46,6 +47,7 @@ class AgenticRuntime:
         self.qec_hook = QECSimulatorHook()
         self._register_default_tools()
         self.market = MarketGapAnalyzer()
+        self.reality_guard = RealityGuard()
         self.scale_path = ScalePathDecisionEngine()
         self.release_status = ReleaseStatusEvaluator()
         self.explorer = HypothesisExplorer()
@@ -152,6 +154,18 @@ class AgenticRuntime:
         out_path.write_text(json.dumps(report, indent=2, ensure_ascii=True), encoding="utf-8")
         return report
 
+    def _load_or_run_eval_report(self) -> tuple[dict[str, Any], str]:
+        eval_path = self.artifacts_dir / "quantum_hard_suite_eval.json"
+        if eval_path.exists():
+            return json.loads(eval_path.read_text(encoding="utf-8")), "cached-artifact"
+        return self.run_quantum_hard_suite(), "fresh-evaluation"
+
+    def _load_or_generate_market_report(self) -> tuple[dict[str, Any], str]:
+        report_path = self.artifacts_dir / "market_gap_report.json"
+        if report_path.exists():
+            return json.loads(report_path.read_text(encoding="utf-8")), "cached-artifact"
+        return self.generate_market_gap_report(), "fresh-generation"
+
     def run_quantum_research_demo(self, question: str) -> dict[str, Any]:
         task = TaskSpec(
             goal=question,
@@ -196,10 +210,29 @@ class AgenticRuntime:
         sandbox_report = self.guidance.latest_sandbox_report()
         execution_dag = self.guidance.latest_execution_dag()
         execution_validation = self.guidance.latest_execution_validation()
+        final_answer = str(result.outcomes.get("final_answer", ""))
+        revised_answer = str(reflected.revised_answer)
+        final_claim_audit = self.reality_guard.audit_text(final_answer)
+        revised_claim_audit = self.reality_guard.audit_text(revised_answer)
+        reality_score_delta = float(revised_claim_audit.get("reality_score", 0.0)) - float(
+            final_claim_audit.get("reality_score", 0.0)
+        )
+        if reality_score_delta > 1e-9:
+            calibration_direction = "improved"
+        elif reality_score_delta < -1e-9:
+            calibration_direction = "regressed"
+        else:
+            calibration_direction = "unchanged"
         payload = {
             "compute_decision": compute_decision.__dict__,
             "result": result.__dict__,
             "reflection": reflected.__dict__,
+            "claim_calibration": {
+                "final_answer": final_claim_audit,
+                "revised_answer": revised_claim_audit,
+                "reality_score_delta": round(reality_score_delta, 6),
+                "direction": calibration_direction,
+            },
             "tool_reasoning": {
                 "budget_estimator": cost_estimate.__dict__,
                 "syndrome_tradeoff_estimator": syndrome_estimate.__dict__,
@@ -239,16 +272,70 @@ class AgenticRuntime:
         return eval_report
 
     def run_release_status(self) -> dict[str, Any]:
-        eval_path = self.artifacts_dir / "quantum_hard_suite_eval.json"
-        source = "cached-artifact"
-        if eval_path.exists():
-            eval_report = json.loads(eval_path.read_text(encoding="utf-8"))
-        else:
-            source = "fresh-evaluation"
-            eval_report = self.run_quantum_hard_suite()
+        eval_report, source = self._load_or_run_eval_report()
         payload = self.release_status.evaluate(eval_report)
         payload["input_source"] = source
         out_path = self.artifacts_dir / "release_status.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_direction_status(self) -> dict[str, Any]:
+        eval_report, eval_source = self._load_or_run_eval_report()
+        market_report, market_source = self._load_or_generate_market_report()
+        release_status = self.release_status.evaluate(eval_report)
+        benchmark_progress = eval_report.get("benchmark_progress", {})
+        benchmark_gaps = benchmark_progress.get("gaps", {})
+        claim_calibration = eval_report.get("claim_calibration", {})
+        external_gate = release_status.get("gates", {}).get("external_claim_gate", {})
+        market_naming = market_report.get("naming_reality", {})
+        market_risk_counts = market_naming.get("risk_counts", {})
+
+        internal_remaining_distance = float(benchmark_gaps.get("remaining_distance", 0.0))
+        external_claim_distance = int(external_gate.get("external_claim_distance", 0))
+        public_overclaim_rate = float(claim_calibration.get("public_overclaim_rate", 0.0))
+        max_public_overclaim_rate = float(
+            benchmark_progress.get("targets", {}).get("max_public_overclaim_rate", 0.0)
+        )
+        overclaim_rate_gap = max(0.0, public_overclaim_rate - max_public_overclaim_rate)
+
+        next_priority = "maintain calibration and continue external replication coverage"
+        if internal_remaining_distance > 1e-9:
+            next_priority = "close internal benchmark remaining_distance before new claim scope changes"
+        elif external_claim_distance > 0:
+            next_priority = "ingest and attest additional external baselines to reduce external_claim_distance"
+        elif overclaim_rate_gap > 1e-9:
+            next_priority = "reduce overclaim rate to stay below benchmark target"
+
+        payload = {
+            "status": "ok",
+            "sources": {
+                "eval": eval_source,
+                "market": market_source,
+            },
+            "distance": {
+                "internal_remaining_distance": internal_remaining_distance,
+                "external_claim_distance": external_claim_distance,
+                "public_overclaim_rate_gap": overclaim_rate_gap,
+            },
+            "direction": {
+                "internal_ready": bool(benchmark_progress.get("ready", False)),
+                "external_claim_ready": bool(release_status.get("external_claim_ready", False)),
+                "claim_scope": str(release_status.get("claim_scope", "unknown")),
+                "combined_average_reality_score": float(
+                    claim_calibration.get("combined_average_reality_score", 0.0)
+                ),
+                "market_high_risk_opportunities": int(market_risk_counts.get("high", 0)),
+                "market_medium_risk_opportunities": int(market_risk_counts.get("medium", 0)),
+            },
+            "blockers": {
+                "external_claim_blockers": external_gate.get("blockers", {}),
+            },
+            "next_priority": next_priority,
+            "disclaimer": (
+                "Direction status is internal calibration telemetry and does not imply external leaderboard parity."
+            ),
+        }
+        out_path = self.artifacts_dir / "direction_status.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 

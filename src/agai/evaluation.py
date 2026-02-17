@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from statistics import mean
+from typing import Any
 
 from .orchestration import MultiAgentOrchestrator
 from .quantum_suite import (
@@ -476,6 +477,18 @@ class Evaluator:
                 "public_overclaim_hits_total": int(public["overclaim_hits_total"]),
                 "holdout_overclaim_hits_total": int(holdout["overclaim_hits_total"]),
                 "adversarial_overclaim_hits_total": int(adversarial["overclaim_hits_total"]),
+                "public_average_reality_score": self._average_reality_score(public["details"]),
+                "holdout_average_reality_score": self._average_reality_score(holdout["details"]),
+                "adversarial_average_reality_score": self._average_reality_score(adversarial["details"]),
+                "combined_average_reality_score": self._average_reality_score(
+                    public["details"] + holdout["details"] + adversarial["details"]
+                ),
+                "public_top_overclaim_terms": self._top_overclaim_terms(public["details"]),
+                "holdout_top_overclaim_terms": self._top_overclaim_terms(holdout["details"]),
+                "adversarial_top_overclaim_terms": self._top_overclaim_terms(adversarial["details"]),
+                "combined_top_overclaim_terms": self._top_overclaim_terms(
+                    public["details"] + holdout["details"] + adversarial["details"]
+                ),
             },
             "specialist_reference": {
                 "public": {
@@ -503,3 +516,22 @@ class Evaluator:
             for key, value in row.items():
                 merged[key] = merged.get(key, 0) + int(value)
         return merged
+
+    def _average_reality_score(self, rows: list[dict[str, Any]]) -> float:
+        if not rows:
+            return 0.0
+        return float(mean(float(row.get("reality_score", 0.0)) for row in rows))
+
+    def _top_overclaim_terms(self, rows: list[dict[str, Any]], limit: int = 5) -> list[dict[str, int | str]]:
+        counts: dict[str, int] = {}
+        for row in rows:
+            terms = row.get("overclaim_terms", [])
+            if not isinstance(terms, list):
+                continue
+            for term in terms:
+                key = str(term).lower().strip()
+                if not key:
+                    continue
+                counts[key] = counts.get(key, 0) + 1
+        ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        return [{"term": term, "count": count} for term, count in ranked[:limit]]
