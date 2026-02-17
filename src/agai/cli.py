@@ -52,6 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_scaffold.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
     campaign_scaffold.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for scaffolded patch-map entries")
     campaign_scaffold.add_argument("--output-dir", default="", help="Optional output directory for scaffold files")
+    campaign_readiness = sub.add_parser(
+        "external-claim-campaign-readiness",
+        help="Run draft+preview preflight gate and report blocked/preview-ready/execute-ready status",
+    )
+    campaign_readiness.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    campaign_readiness.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    campaign_readiness.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for drafted baseline runs")
+    campaign_readiness.add_argument("--patch-map", default="", help="Optional path to patch-overrides map json keyed by baseline_id")
+    campaign_readiness.add_argument("--ingest-manifest", default="", help="Optional path to ingest manifest json (list or object)")
+    campaign_readiness.add_argument("--output", default="", help="Optional output path for generated campaign config json")
     replay = sub.add_parser(
         "external-claim-replay",
         help="Run attestation replay for auto-fixable external-claim rows and report distance deltas",
@@ -183,6 +193,15 @@ def main() -> None:
             eval_path=str(args.eval_path or "") or None,
             default_max_metric_delta=float(args.max_metric_delta),
             output_dir=str(args.output_dir or "") or None,
+        )
+    elif args.command == "external-claim-campaign-readiness":
+        output = runtime.run_external_claim_campaign_readiness(
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            default_max_metric_delta=float(args.max_metric_delta),
+            patch_map_path=str(args.patch_map or "") or None,
+            ingest_manifest_path=str(args.ingest_manifest or "") or None,
+            output_path=str(args.output or "") or None,
         )
     elif args.command == "external-claim-replay":
         output = runtime.run_external_claim_replay(

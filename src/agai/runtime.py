@@ -23,6 +23,7 @@ from .external_claim_replay import ExternalClaimReplayRunner
 from .external_claim_sandbox import ExternalClaimSandboxPipeline
 from .external_claim_campaign import ExternalClaimSandboxCampaignRunner
 from .external_claim_campaign_draft import ExternalClaimCampaignDraftService
+from .external_claim_campaign_readiness import ExternalClaimCampaignReadinessService
 from .external_claim_campaign_scaffold import ExternalClaimCampaignScaffoldService
 from .hypothesis import HypothesisExplorer
 from .external_claim_promotion import ExternalClaimPromotionService
@@ -76,6 +77,7 @@ class AgenticRuntime:
             policy_path=str(self.release_status.policy_path)
         )
         self.external_claim_campaign_draft = ExternalClaimCampaignDraftService()
+        self.external_claim_campaign_readiness = ExternalClaimCampaignReadinessService()
         self.external_claim_campaign_scaffold = ExternalClaimCampaignScaffoldService()
         self.external_claim_promotion = ExternalClaimPromotionService(
             policy_path=str(self.release_status.policy_path)
@@ -476,28 +478,17 @@ class AgenticRuntime:
         ingest_manifest_path: str | None = None,
         output_path: str | None = None,
     ) -> dict[str, Any]:
-        if eval_path:
-            path = Path(eval_path)
-            if not path.exists():
-                return {
-                    "status": "error",
-                    "reason": f"eval artifact not found: {path}",
-                }
-            eval_report = json.loads(path.read_text(encoding="utf-8"))
-            eval_source = "explicit-eval-artifact"
-        else:
-            eval_report, eval_source = self._load_or_run_eval_report()
-
-        active_registry = registry_path or "config/frontier_baselines.json"
-        comparator = DeclaredBaselineComparator(registry_path=active_registry)
-        eval_report["declared_baseline_comparison"] = comparator.compare(eval_report)
-        release_status = self.release_status.evaluate(eval_report)
-        claim_plan = self.external_claim_planner.plan(
-            eval_report=eval_report,
-            release_status=release_status,
-            registry_path=active_registry,
+        context = self._prepare_external_claim_context(
+            registry_path=registry_path,
+            eval_path=eval_path,
             default_max_metric_delta=default_max_metric_delta,
         )
+        if context.get("status") != "ok":
+            return context
+        eval_report = context["eval_report"]
+        eval_source = str(context["eval_source"])
+        active_registry = str(context["active_registry"])
+        claim_plan = context["claim_plan"]
 
         patch_map_result = self._load_patch_map(path=patch_map_path)
         if patch_map_result.get("status") != "ok":
@@ -543,6 +534,121 @@ class AgenticRuntime:
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
+    def run_external_claim_campaign_readiness(
+        self,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        default_max_metric_delta: float = 0.02,
+        patch_map_path: str | None = None,
+        ingest_manifest_path: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
+        context = self._prepare_external_claim_context(
+            registry_path=registry_path,
+            eval_path=eval_path,
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        if context.get("status") != "ok":
+            return context
+        eval_report = context["eval_report"]
+        eval_source = str(context["eval_source"])
+        active_registry = str(context["active_registry"])
+        claim_plan = context["claim_plan"]
+
+        patch_map_result = self._load_patch_map(path=patch_map_path)
+        if patch_map_result.get("status") != "ok":
+            return {
+                "status": "error",
+                "reason": str(patch_map_result.get("reason", "invalid patch map payload")),
+            }
+        patch_map = patch_map_result.get("payload", {})
+        ingest_manifest_result = self._load_ingest_manifest(path=ingest_manifest_path)
+        if ingest_manifest_result.get("status") != "ok":
+            return {
+                "status": "error",
+                "reason": str(ingest_manifest_result.get("reason", "invalid ingest manifest payload")),
+            }
+        ingest_payload_paths = ingest_manifest_result.get("payload", [])
+
+        draft_payload = self.external_claim_campaign_draft.build(
+            claim_plan=claim_plan,
+            patch_overrides_map=patch_map if isinstance(patch_map, dict) else {},
+            ingest_payload_paths=ingest_payload_paths if isinstance(ingest_payload_paths, list) else [],
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        draft_payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+            "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
+            "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
+        }
+        draft_payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+        campaign_output = Path(output_path) if output_path else (self.artifacts_dir / "generated_external_campaign_config.json")
+        campaign_output.parent.mkdir(parents=True, exist_ok=True)
+        draft_campaign_config = draft_payload.get("campaign_config", {})
+        campaign_output.write_text(json.dumps(draft_campaign_config, indent=2, ensure_ascii=True), encoding="utf-8")
+        draft_payload["campaign_output_path"] = str(campaign_output)
+
+        preview_payload: dict[str, Any] | None = None
+        draft_summary = draft_payload.get("summary", {})
+        if not isinstance(draft_summary, dict):
+            draft_summary = {}
+        unresolved_dependencies = int(draft_summary.get("unresolved_dependencies", 0))
+        draft_status = str(draft_payload.get("status", "unknown"))
+        baseline_runs = draft_campaign_config.get("baseline_runs", []) if isinstance(draft_campaign_config, dict) else []
+        ingest_paths = (
+            draft_campaign_config.get("ingest_payload_paths", []) if isinstance(draft_campaign_config, dict) else []
+        )
+        staged_actions = (
+            (len(baseline_runs) if isinstance(baseline_runs, list) else 0)
+            + (len(ingest_paths) if isinstance(ingest_paths, list) else 0)
+        )
+        if draft_status == "ok" and unresolved_dependencies == 0 and staged_actions > 0:
+            preview_payload = self.external_claim_promotion.preview(
+                eval_report=eval_report,
+                source_registry_path=active_registry,
+                campaign_config=draft_campaign_config if isinstance(draft_campaign_config, dict) else {},
+                default_max_metric_delta=default_max_metric_delta,
+            )
+
+        readiness = self.external_claim_campaign_readiness.evaluate(
+            draft_payload=draft_payload,
+            preview_payload=preview_payload,
+        )
+        payload: dict[str, Any] = dict(readiness)
+        payload["draft"] = draft_payload
+        payload["preview"] = (
+            preview_payload
+            if isinstance(preview_payload, dict)
+            else {
+                "status": "not-executed",
+                "reason": "draft gate not satisfied for preview",
+            }
+        )
+        payload["campaign_output_path"] = str(campaign_output)
+        payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+            "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
+            "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
+        }
+        payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+        out_path = self.artifacts_dir / "external_claim_campaign_readiness.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
     def run_external_claim_campaign_scaffold(
         self,
         registry_path: str | None = None,
@@ -550,28 +656,17 @@ class AgenticRuntime:
         default_max_metric_delta: float = 0.02,
         output_dir: str | None = None,
     ) -> dict[str, Any]:
-        if eval_path:
-            path = Path(eval_path)
-            if not path.exists():
-                return {
-                    "status": "error",
-                    "reason": f"eval artifact not found: {path}",
-                }
-            eval_report = json.loads(path.read_text(encoding="utf-8"))
-            eval_source = "explicit-eval-artifact"
-        else:
-            eval_report, eval_source = self._load_or_run_eval_report()
-
-        active_registry = registry_path or "config/frontier_baselines.json"
-        comparator = DeclaredBaselineComparator(registry_path=active_registry)
-        eval_report["declared_baseline_comparison"] = comparator.compare(eval_report)
-        release_status = self.release_status.evaluate(eval_report)
-        claim_plan = self.external_claim_planner.plan(
-            eval_report=eval_report,
-            release_status=release_status,
-            registry_path=active_registry,
+        context = self._prepare_external_claim_context(
+            registry_path=registry_path,
+            eval_path=eval_path,
             default_max_metric_delta=default_max_metric_delta,
         )
+        if context.get("status") != "ok":
+            return context
+        eval_report = context["eval_report"]
+        eval_source = str(context["eval_source"])
+        active_registry = str(context["active_registry"])
+        claim_plan = context["claim_plan"]
 
         scaffold_dir = (
             Path(output_dir)
@@ -996,6 +1091,43 @@ class AgenticRuntime:
                 return {"status": "error", "reason": "ingest manifest ingest_payload_paths must be a list"}
             return {"status": "ok", "payload": [str(item) for item in paths]}
         return {"status": "error", "reason": "ingest manifest payload must be a list or object"}
+
+    def _prepare_external_claim_context(
+        self,
+        *,
+        registry_path: str | None,
+        eval_path: str | None,
+        default_max_metric_delta: float,
+    ) -> dict[str, Any]:
+        if eval_path:
+            path = Path(eval_path)
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"eval artifact not found: {path}",
+                }
+            eval_report = json.loads(path.read_text(encoding="utf-8"))
+            eval_source = "explicit-eval-artifact"
+        else:
+            eval_report, eval_source = self._load_or_run_eval_report()
+
+        active_registry = registry_path or "config/frontier_baselines.json"
+        comparator = DeclaredBaselineComparator(registry_path=active_registry)
+        eval_report["declared_baseline_comparison"] = comparator.compare(eval_report)
+        release_status = self.release_status.evaluate(eval_report)
+        claim_plan = self.external_claim_planner.plan(
+            eval_report=eval_report,
+            release_status=release_status,
+            registry_path=active_registry,
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        return {
+            "status": "ok",
+            "eval_report": eval_report,
+            "eval_source": eval_source,
+            "active_registry": active_registry,
+            "claim_plan": claim_plan,
+        }
 
     def run_attest_external_baseline(
         self,
