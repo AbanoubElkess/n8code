@@ -1,0 +1,180 @@
+{
+  "program": "Universal Low-Cost Agentic AI",
+  "issues": [
+    {
+      "jira_id": "AGAI-000",
+      "phase": "Phase-0",
+      "title": "Mission charter and KPI tree",
+      "body": "Acceptance Criteria:\n- Mission statement finalized.\n- KPI hierarchy defined (quality, cost, energy, reproducibility).\n- Moonshot KPI separated from release gates.\n\nRisks:\n- KPI ambiguity causes execution drift.\n\nTest Plan:\n- Review checklist sign-off from architecture and research owners.",
+      "labels": ["phase-0", "program"]
+    },
+    {
+      "jira_id": "AGAI-001",
+      "phase": "Phase-0",
+      "title": "Issue taxonomy and templates",
+      "body": "Acceptance Criteria:\n- Issue naming convention enforced.\n- Phase and jira IDs required in title/body.\n- Bug intake template configured.\n\nRisks:\n- Inconsistent issue metadata increases technical debt.\n\nTest Plan:\n- Validate template output on sample 10 issues.",
+      "labels": ["phase-0", "governance"]
+    },
+    {
+      "jira_id": "AGAI-002",
+      "phase": "Phase-0",
+      "title": "Reproducibility and evaluation policy",
+      "body": "Acceptance Criteria:\n- Reproducibility protocol documented in code config.\n- Scorecard fields frozen.\n- Falsification minimum standard defined.\n\nRisks:\n- Non-repeatable experiments reduce trust.\n\nTest Plan:\n- Re-run fixed seed scenarios and compare variance limits.",
+      "labels": ["phase-0", "eval"]
+    },
+    {
+      "jira_id": "AGAI-100",
+      "phase": "Phase-1",
+      "title": "Market taxonomy",
+      "body": "Acceptance Criteria:\n- Segments include infrastructure, orchestration, vertical copilots, autonomous ops, science agents, safety/eval.\n- Demand signals assigned and reviewed.\n\nRisks:\n- Missing segment coverage.\n\nTest Plan:\n- Taxonomy completeness check against source list.",
+      "labels": ["phase-1", "market"]
+    },
+    {
+      "jira_id": "AGAI-101",
+      "phase": "Phase-1",
+      "title": "Competitive capability-cost map",
+      "body": "Acceptance Criteria:\n- Competitors mapped to segment and cost-accessibility axis.\n- Strength and gap fields completed.\n\nRisks:\n- Bias toward single vendor narrative.\n\nTest Plan:\n- Cross-check entries against primary references.",
+      "labels": ["phase-1", "market"]
+    },
+    {
+      "jira_id": "AGAI-102",
+      "phase": "Phase-1",
+      "title": "Missing-piece detection",
+      "body": "Acceptance Criteria:\n- At least 10 missing pieces identified.\n- Each missing piece linked to evidence and first experiment.\n\nRisks:\n- Opportunity inflation without feasibility checks.\n\nTest Plan:\n- Feasibility scoring calibration pass.",
+      "labels": ["phase-1", "market"]
+    },
+    {
+      "jira_id": "AGAI-103",
+      "phase": "Phase-1",
+      "title": "Opportunity ranking matrix",
+      "body": "Acceptance Criteria:\n- Weighted scoring defined by impact/feasibility/defensibility/accessibility.\n- Ranked portfolio exported as machine-readable artifact.\n\nRisks:\n- Weighting misalignment with mission.\n\nTest Plan:\n- Sensitivity analysis across scoring weights.",
+      "labels": ["phase-1", "market"]
+    },
+    {
+      "jira_id": "AGAI-200",
+      "phase": "Phase-2",
+      "title": "Model-agnostic adapter core with Ollama baseline",
+      "body": "Acceptance Criteria:\n- Stable model adapter interface implemented.\n- Ollama adapter and local fallback adapter operational.\n\nRisks:\n- Model-specific drift in behavior.\n\nTest Plan:\n- Contract tests across adapters.",
+      "labels": ["phase-2", "core"]
+    },
+    {
+      "jira_id": "AGAI-201",
+      "phase": "Phase-2",
+      "title": "Multi-agent orchestration kernel",
+      "body": "Acceptance Criteria:\n- Parallel agent rounds with shared budget scheduler.\n- Consensus and contradiction surfacing implemented.\n\nRisks:\n- Coordination overhead exceeds gains.\n\nTest Plan:\n- Multi-agent vs baseline comparison on fixed suite.",
+      "labels": ["phase-2", "core"]
+    },
+    {
+      "jira_id": "AGAI-202",
+      "phase": "Phase-2",
+      "title": "Parallel communication with hint exchange",
+      "body": "Acceptance Criteria:\n- Hint packets exchanged between rounds.\n- Critic loop influences final output selection.\n\nRisks:\n- Echo chamber effects.\n\nTest Plan:\n- Ablation with hints disabled vs enabled.",
+      "labels": ["phase-2", "core"]
+    },
+    {
+      "jira_id": "AGAI-203",
+      "phase": "Phase-2",
+      "title": "Cost governor and budget policy",
+      "body": "Acceptance Criteria:\n- Token/latency/energy/usd limits enforced at runtime.\n- Remaining budget introspection exposed.\n\nRisks:\n- Overly strict limits reduce answer quality.\n\nTest Plan:\n- Boundary tests for each budget dimension.",
+      "labels": ["phase-2", "core"]
+    },
+    {
+      "jira_id": "AGAI-204",
+      "phase": "Phase-2",
+      "title": "Local-first memory and provenance",
+      "body": "Acceptance Criteria:\n- SQLite-backed records for messages/evidence/results.\n- Append-only trace log in jsonl format.\n\nRisks:\n- Missing provenance fields in critical flows.\n\nTest Plan:\n- Persistence and schema tests.",
+      "labels": ["phase-2", "core"]
+    },
+    {
+      "jira_id": "AGAI-300",
+      "phase": "Phase-3",
+      "title": "Adaptive test-time compute controller",
+      "body": "Acceptance Criteria:\n- Depth/branch/early-exit policy implemented.\n- Policy reacts to uncertainty and marginal gain.\n\nRisks:\n- Under-compute on hard tasks.\n\nTest Plan:\n- Decision table tests under edge conditions.",
+      "labels": ["phase-3", "performance"]
+    },
+    {
+      "jira_id": "AGAI-301",
+      "phase": "Phase-3",
+      "title": "Tool-augmented reasoning path",
+      "body": "Acceptance Criteria:\n- MCP-style tool registry available.\n- Tool safety checks and schema validation active.\n\nRisks:\n- Prompt injection through tools.\n\nTest Plan:\n- Malicious payload block-rate tests.",
+      "labels": ["phase-3", "performance"]
+    },
+    {
+      "jira_id": "AGAI-302",
+      "phase": "Phase-3",
+      "title": "Reflection and falsification-first critic loop",
+      "body": "Acceptance Criteria:\n- Draft outputs pass critique + falsification checks before release.\n- Revision notes attached to final artifacts.\n\nRisks:\n- Loop can increase latency.\n\nTest Plan:\n- Compare pass-rate with and without reflection loop.",
+      "labels": ["phase-3", "performance"]
+    },
+    {
+      "jira_id": "AGAI-303",
+      "phase": "Phase-3",
+      "title": "Domain micro-specialists and routing",
+      "body": "Acceptance Criteria:\n- Role-based specialists configured.\n- Routing policy selects specialists per task domain.\n\nRisks:\n- Specialist overlap causes redundant compute.\n\nTest Plan:\n- Routing ablation by domain tags.",
+      "labels": ["phase-3", "performance"]
+    },
+    {
+      "jira_id": "AGAI-304",
+      "phase": "Phase-3",
+      "title": "Trace distillation pipeline",
+      "body": "Acceptance Criteria:\n- Execution traces prepared for compact policy distillation.\n- Distilled policy quality tracked against baseline.\n\nRisks:\n- Distillation loses critical edge-case behaviors.\n\nTest Plan:\n- Held-out case regression checks.",
+      "labels": ["phase-3", "performance"]
+    },
+    {
+      "jira_id": "AGAI-400",
+      "phase": "Phase-4",
+      "title": "Quantum hard benchmark suite",
+      "body": "Acceptance Criteria:\n- QEC + device physics tasks defined with pass thresholds.\n- Evaluation scripts produce machine-readable outputs.\n\nRisks:\n- Benchmark leakage or overfitting.\n\nTest Plan:\n- Blind holdout cases and versioned suite.",
+      "labels": ["phase-4", "quantum"]
+    },
+    {
+      "jira_id": "AGAI-401",
+      "phase": "Phase-4",
+      "title": "Counterfactual physics exploration sandbox",
+      "body": "Acceptance Criteria:\n- Hypothesis generation supports nonstandard but testable rules.\n- Ranking and gate checks integrated.\n\nRisks:\n- Non-falsifiable hypotheses flood output.\n\nTest Plan:\n- Rule validity gate benchmark.",
+      "labels": ["phase-4", "quantum"]
+    },
+    {
+      "jira_id": "AGAI-402",
+      "phase": "Phase-4",
+      "title": "Strict falsification gates",
+      "body": "Acceptance Criteria:\n- Physical consistency checks enforced pre-simulation.\n- Violations logged with reasons.\n\nRisks:\n- Overly rigid checks block valid novelty.\n\nTest Plan:\n- False-positive/false-negative validation set.",
+      "labels": ["phase-4", "quantum"]
+    },
+    {
+      "jira_id": "AGAI-403",
+      "phase": "Phase-4",
+      "title": "End-to-end researcher guidance mode",
+      "body": "Acceptance Criteria:\n- User question -> executable experiment DAG flow operational.\n- Outputs include assumptions, steps, and stop criteria.\n\nRisks:\n- Guidance too abstract for execution.\n\nTest Plan:\n- Usability validation with novice and expert tasks.",
+      "labels": ["phase-4", "quantum"]
+    },
+    {
+      "jira_id": "AGAI-500",
+      "phase": "Phase-5",
+      "title": "Frontier baseline comparison on hard-suite",
+      "body": "Acceptance Criteria:\n- Comparative evaluation report generated.\n- Cost and quality deltas included.\n\nRisks:\n- Baseline mismatch invalidates conclusions.\n\nTest Plan:\n- Standardized prompt/eval protocol review.",
+      "labels": ["phase-5", "validation"]
+    },
+    {
+      "jira_id": "AGAI-501",
+      "phase": "Phase-5",
+      "title": "Moonshot benchmark spread tracking",
+      "body": "Acceptance Criteria:\n- General benchmark spread tracked as non-release KPI.\n- No gating dependency on moonshot KPI.\n\nRisks:\n- KPI confusion with release readiness.\n\nTest Plan:\n- Dashboard consistency checks.",
+      "labels": ["phase-5", "validation"]
+    },
+    {
+      "jira_id": "AGAI-502",
+      "phase": "Phase-5",
+      "title": "Reproducible scorecards and failure analysis",
+      "body": "Acceptance Criteria:\n- Scorecards include quality, cost, energy, reproducibility, novelty.\n- Failure taxonomy exported.\n\nRisks:\n- Missing failure metadata.\n\nTest Plan:\n- Failure replay drill.",
+      "labels": ["phase-5", "validation"]
+    },
+    {
+      "jira_id": "AGAI-503",
+      "phase": "Phase-5",
+      "title": "Scale path decision framework",
+      "body": "Acceptance Criteria:\n- Local-only vs hybrid escalation decision criteria finalized.\n- Policy includes governance and privacy requirements.\n\nRisks:\n- Unclear migration path.\n\nTest Plan:\n- Scenario analysis across 3 deployment profiles.",
+      "labels": ["phase-5", "validation"]
+    }
+  ]
+}

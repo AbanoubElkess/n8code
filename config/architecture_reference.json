@@ -1,0 +1,22 @@
+{
+  "name": "Universal Low-Cost Agentic AI",
+  "version": "0.1.0",
+  "interfaces": {
+    "ModelAdapter": ["generate", "tool_call", "embed", "score", "cost_meter"],
+    "AgentCard": ["id", "role", "capabilities", "budget_limit", "safety_policy", "model_profile"],
+    "TaskSpec": ["goal", "constraints", "success_metric", "budget", "deadline", "domain"],
+    "MessageEnvelope": ["sender", "receiver", "intent", "content", "evidence_refs", "confidence", "cost_spent"],
+    "HintPacket": ["hypothesis", "counterargument", "next_test", "expected_failure_mode"],
+    "EvidenceRecord": ["source", "retrieval_time", "verifiability", "license", "hash"],
+    "HypothesisProgram": ["rules", "priors"],
+    "ExperimentPlan": ["simulator", "tool_chain", "parameters", "stop_criteria", "steps"],
+    "ResultBundle": ["outcomes", "confidence_intervals", "reproducibility_artifact_ids", "contradictions", "trace_ids"],
+    "EvalCase": ["case_id", "prompt", "expected", "domain", "tags"],
+    "Scorecard": ["quality", "latency_ms", "cost_usd", "energy_joules", "reproducibility", "novelty", "notes"]
+  },
+  "protocols": {
+    "inter_agent": "A2A-compatible envelope semantics",
+    "tool_runtime": "MCP-compatible tool registry",
+    "storage": "SQLite + append-only JSONL trace"
+  }
+}

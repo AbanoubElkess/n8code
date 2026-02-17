@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agai"
+version = "0.1.0"
+description = "Universal low-cost agentic AI runtime with small-model-first orchestration"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+agai = "agai.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

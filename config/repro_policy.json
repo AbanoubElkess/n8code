@@ -1,0 +1,24 @@
+{
+  "policy_version": "1.0.0",
+  "release_gates": {
+    "hard_suite_absolute_win_required": true,
+    "moonshot_general_benchmarks_gate": false
+  },
+  "seed_control": {
+    "enabled": true,
+    "default_seed": 20260217
+  },
+  "minimum_reporting": [
+    "quality",
+    "latency_ms",
+    "cost_usd",
+    "energy_joules",
+    "reproducibility",
+    "novelty"
+  ],
+  "falsification_rules": [
+    "Every hypothesis must include at least one disproof test.",
+    "Contradictory outputs must be surfaced in final artifacts.",
+    "Absolute claims require explicit counterexample search."
+  ]
+}
