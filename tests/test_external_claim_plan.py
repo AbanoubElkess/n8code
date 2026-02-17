@@ -164,6 +164,40 @@ class TestExternalClaimPlanner(unittest.TestCase):
         self.assertIn("raise_combined_reality_score", action_types)
         self.assertIn("reduce_public_overclaim_rate", action_types)
 
+    def test_plan_does_not_require_refresh_for_unverified_only_rows(self) -> None:
+        planner = ExternalClaimPlanner()
+        eval_report = {
+            "benchmark_progress": {"suite_id": "quantum_hard_suite_v2_adversarial"},
+            "benchmark_provenance": {"scoring_reference": "src/agai/quantum_suite.py:263"},
+            "declared_baseline_comparison": {
+                "comparisons": [
+                    {
+                        "baseline_id": "external-unverified-only",
+                        "source_type": "external_reported",
+                        "comparability": {
+                            "comparable": False,
+                            "reasons": ["baseline unverified"],
+                        },
+                    }
+                ]
+            },
+        }
+        release_status = {
+            "gates": {
+                "external_claim_gate": {
+                    "required_external_baselines": 1,
+                    "comparable_external_baselines": 0,
+                    "external_claim_distance": 1,
+                    "blockers": {"baseline unverified": 1},
+                },
+            }
+        }
+        plan = planner.plan(eval_report=eval_report, release_status=release_status)
+        row_actions = plan["row_plans"][0]["actions"]
+        action_types = [row["action_type"] for row in row_actions]
+        self.assertIn("attest_baseline", action_types)
+        self.assertNotIn("refresh_evidence_payload", action_types)
+
 
 if __name__ == "__main__":
     unittest.main()

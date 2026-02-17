@@ -189,10 +189,8 @@ class ExternalClaimPlanner:
         scoring_mismatch = "scoring protocol mismatch" in reason_set
         missing_metrics = "missing metric payload" in reason_set or "no overlapping metrics" in reason_set
         insufficient_overlap = any(reason.startswith("insufficient overlapping metrics") for reason in reason_set)
-        unverified = "baseline unverified" in reason_set
-
         actions: list[dict[str, Any]] = []
-        if missing_evidence or unverified or placeholder_metadata or invalid_dates:
+        if missing_evidence or placeholder_metadata or invalid_dates:
             actions.append(
                 {
                     "priority": 1,

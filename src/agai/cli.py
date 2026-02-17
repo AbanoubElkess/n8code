@@ -34,6 +34,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("release-status", help="Show release claim scope status from latest evaluation artifact")
     sub.add_parser("direction-status", help="Show benchmark, claim-distance, and naming-risk direction telemetry")
     sub.add_parser("external-claim-plan", help="Generate actionable remediation plan for external-claim distance")
+    replay = sub.add_parser(
+        "external-claim-replay",
+        help="Run attestation replay for auto-fixable external-claim rows and report distance deltas",
+    )
+    replay.add_argument(
+        "--registry-path",
+        default="config/frontier_baselines.json",
+        help="Path to baseline registry json",
+    )
+    replay.add_argument("--max-metric-delta", type=float, default=0.02, help="Maximum allowed absolute metric delta")
+    replay.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    replay.add_argument("--dry-run", action="store_true", help="Preview replay candidates without mutating registry")
     ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
     ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
     ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
@@ -77,6 +89,13 @@ def main() -> None:
         output = runtime.run_direction_status()
     elif args.command == "external-claim-plan":
         output = runtime.run_external_claim_plan()
+    elif args.command == "external-claim-replay":
+        output = runtime.run_external_claim_replay(
+            registry_path=str(args.registry_path),
+            max_metric_delta=float(args.max_metric_delta),
+            eval_path=str(args.eval_path or "") or None,
+            dry_run=bool(args.dry_run),
+        )
     elif args.command == "ingest-external-baseline":
         output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)
     elif args.command == "attest-external-baseline":

@@ -17,6 +17,7 @@ from .direction_tracker import DirectionTracker
 from .distillation import TraceDistiller
 from .evaluation import Evaluator
 from .external_claim_plan import ExternalClaimPlanner
+from .external_claim_replay import ExternalClaimReplayRunner
 from .hypothesis import HypothesisExplorer
 from .market import MarketGapAnalyzer
 from .memory import ProvenanceMemory
@@ -62,6 +63,7 @@ class AgenticRuntime:
         self.moonshot_tracker = MoonshotTracker(history_path=str(self.artifacts_dir / "moonshot_history.jsonl"))
         self.direction_tracker = DirectionTracker(history_path=str(self.artifacts_dir / "direction_history.jsonl"))
         self.external_claim_planner = ExternalClaimPlanner()
+        self.external_claim_replay = ExternalClaimReplayRunner(policy_path=str(self.release_status.policy_path))
         self.declared_baseline_comparator = DeclaredBaselineComparator()
         self.tool_engine = ToolReasoningEngine(self.tool_registry)
         self.agents = self._build_agents(use_ollama=use_ollama, ollama_model=ollama_model)
@@ -446,6 +448,44 @@ class AgenticRuntime:
             "release_status": "computed-in-process",
         }
         out_path = self.artifacts_dir / "external_claim_plan.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_external_claim_replay(
+        self,
+        registry_path: str | None = None,
+        max_metric_delta: float = 0.02,
+        eval_path: str | None = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        if eval_path:
+            path = Path(eval_path)
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"eval artifact not found: {path}",
+                }
+            eval_report = json.loads(path.read_text(encoding="utf-8"))
+            eval_source = "explicit-eval-artifact"
+        else:
+            eval_report, eval_source = self._load_or_run_eval_report()
+
+        active_registry = registry_path or "config/frontier_baselines.json"
+        comparator = DeclaredBaselineComparator(registry_path=active_registry)
+        eval_report["declared_baseline_comparison"] = comparator.compare(eval_report)
+        release_status = self.release_status.evaluate(eval_report)
+        payload = self.external_claim_replay.run(
+            eval_report=eval_report,
+            release_status=release_status,
+            registry_path=active_registry,
+            max_metric_delta=max_metric_delta,
+            dry_run=dry_run,
+        )
+        payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+        }
+        out_path = self.artifacts_dir / "external_claim_replay.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 

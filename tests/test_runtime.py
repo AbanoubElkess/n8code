@@ -186,6 +186,20 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("priority_actions", claim_plan)
         self.assertIn("sources", claim_plan)
         self.assertTrue((self.temp_dir / "external_claim_plan.json").exists())
+        claim_replay = runtime.run_external_claim_replay(
+            registry_path=str(ingest_registry),
+            max_metric_delta=0.05,
+            eval_path=str(self.temp_dir / "quantum_hard_suite_eval.json"),
+            dry_run=True,
+        )
+        self.assertEqual(claim_replay["status"], "ok")
+        self.assertTrue(claim_replay["dry_run"])
+        self.assertIn("before", claim_replay)
+        self.assertIn("after", claim_replay)
+        self.assertIn("delta", claim_replay)
+        self.assertIn("replay_summary", claim_replay)
+        self.assertIn("skipped_manual_rows", claim_replay)
+        self.assertTrue((self.temp_dir / "external_claim_replay.json").exists())
 
         distilled = runtime.run_trace_distillation()
         self.assertIn("policies", distilled)
