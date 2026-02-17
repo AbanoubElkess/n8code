@@ -71,6 +71,17 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_validate.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for claim-plan context")
     campaign_validate.add_argument("--patch-map", default="", help="Optional path to patch-overrides map json keyed by baseline_id")
     campaign_validate.add_argument("--ingest-manifest", default="", help="Optional path to ingest manifest json (list or object)")
+    campaign_autofill = sub.add_parser(
+        "external-claim-campaign-autofill",
+        help="Autofill scaffold patches from evidence map and run readiness preflight",
+    )
+    campaign_autofill.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    campaign_autofill.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    campaign_autofill.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for scaffold/autofill context")
+    campaign_autofill.add_argument("--evidence-map", required=True, help="Path to evidence map json used to autofill scaffold patches")
+    campaign_autofill.add_argument("--scaffold-output-dir", default="", help="Optional output directory for scaffold templates")
+    campaign_autofill.add_argument("--autofill-output-dir", default="", help="Optional output directory for autofilled artifacts")
+    campaign_autofill.add_argument("--output", default="", help="Optional output path for generated campaign config json")
     replay = sub.add_parser(
         "external-claim-replay",
         help="Run attestation replay for auto-fixable external-claim rows and report distance deltas",
@@ -219,6 +230,16 @@ def main() -> None:
             default_max_metric_delta=float(args.max_metric_delta),
             patch_map_path=str(args.patch_map or "") or None,
             ingest_manifest_path=str(args.ingest_manifest or "") or None,
+        )
+    elif args.command == "external-claim-campaign-autofill":
+        output = runtime.run_external_claim_campaign_autofill(
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            default_max_metric_delta=float(args.max_metric_delta),
+            evidence_map_path=str(args.evidence_map),
+            scaffold_output_dir=str(args.scaffold_output_dir or "") or None,
+            autofill_output_dir=str(args.autofill_output_dir or "") or None,
+            output_path=str(args.output or "") or None,
         )
     elif args.command == "external-claim-replay":
         output = runtime.run_external_claim_replay(

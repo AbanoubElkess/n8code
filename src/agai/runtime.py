@@ -22,6 +22,7 @@ from .external_claim_plan import ExternalClaimPlanner
 from .external_claim_replay import ExternalClaimReplayRunner
 from .external_claim_sandbox import ExternalClaimSandboxPipeline
 from .external_claim_campaign import ExternalClaimSandboxCampaignRunner
+from .external_claim_campaign_autofill import ExternalClaimCampaignAutofillService
 from .external_claim_campaign_draft import ExternalClaimCampaignDraftService
 from .external_claim_campaign_readiness import ExternalClaimCampaignReadinessService
 from .external_claim_campaign_scaffold import ExternalClaimCampaignScaffoldService
@@ -80,6 +81,7 @@ class AgenticRuntime:
         self.external_claim_campaign_draft = ExternalClaimCampaignDraftService()
         self.external_claim_campaign_readiness = ExternalClaimCampaignReadinessService()
         self.external_claim_campaign_scaffold = ExternalClaimCampaignScaffoldService()
+        self.external_claim_campaign_autofill = ExternalClaimCampaignAutofillService()
         self.external_claim_campaign_validator = ExternalClaimCampaignValidatorService()
         self.external_claim_promotion = ExternalClaimPromotionService(
             policy_path=str(self.release_status.policy_path)
@@ -739,6 +741,132 @@ class AgenticRuntime:
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
+    def run_external_claim_campaign_autofill(
+        self,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        default_max_metric_delta: float = 0.02,
+        evidence_map_path: str | None = None,
+        scaffold_output_dir: str | None = None,
+        autofill_output_dir: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
+        evidence_result = self._load_evidence_map(path=evidence_map_path)
+        if evidence_result.get("status") != "ok":
+            return {
+                "status": "error",
+                "reason": str(evidence_result.get("reason", "invalid evidence map payload")),
+            }
+        evidence_map = evidence_result.get("payload", {})
+
+        context = self._prepare_external_claim_context(
+            registry_path=registry_path,
+            eval_path=eval_path,
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        if context.get("status") != "ok":
+            return context
+        eval_report = context["eval_report"]
+        eval_source = str(context["eval_source"])
+        active_registry = str(context["active_registry"])
+        claim_plan = context["claim_plan"]
+
+        scaffold_dir = (
+            Path(scaffold_output_dir)
+            if scaffold_output_dir
+            else (self.artifacts_dir / "campaign_scaffold")
+        )
+        scaffold_payload = self.external_claim_campaign_scaffold.build(
+            claim_plan=claim_plan,
+            eval_report=eval_report,
+            registry_path=active_registry,
+            output_dir=str(scaffold_dir),
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        scaffold_payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+            "evidence_map": str(Path(evidence_map_path)) if evidence_map_path else "none",
+        }
+        scaffold_payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+
+        autofill_dir = (
+            Path(autofill_output_dir)
+            if autofill_output_dir
+            else (self.artifacts_dir / "campaign_autofill")
+        )
+        autofill_payload = self.external_claim_campaign_autofill.build(
+            scaffold_payload=scaffold_payload if isinstance(scaffold_payload, dict) else {},
+            evidence_map=evidence_map if isinstance(evidence_map, dict) else {},
+            eval_report=eval_report if isinstance(eval_report, dict) else {},
+            output_dir=str(autofill_dir),
+        )
+        autofill_payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+            "evidence_map": str(Path(evidence_map_path)) if evidence_map_path else "none",
+            "scaffold_output_dir": str(scaffold_dir),
+        }
+        autofill_payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+
+        patch_map_path = str(autofill_payload.get("patch_map_path", "")).strip()
+        ingest_manifest_path = str(autofill_payload.get("ingest_manifest_path", "")).strip()
+        readiness_payload = self.run_external_claim_campaign_readiness(
+            registry_path=active_registry,
+            eval_path=eval_path,
+            default_max_metric_delta=default_max_metric_delta,
+            patch_map_path=patch_map_path or None,
+            ingest_manifest_path=ingest_manifest_path or None,
+            output_path=output_path,
+        )
+
+        status = "blocked"
+        readiness_status = str(readiness_payload.get("status", "unknown"))
+        if readiness_status == "ready-for-execute":
+            status = "ready-for-execute"
+        elif readiness_status == "ready-for-preview":
+            status = "ready-for-preview"
+        elif readiness_status in {"error"} or str(autofill_payload.get("status", "ok")) == "error":
+            status = "error"
+
+        payload = {
+            "status": status,
+            "sources": {
+                "eval": eval_source,
+                "release_status": "computed-in-process",
+                "evidence_map": str(Path(evidence_map_path)) if evidence_map_path else "none",
+            },
+            "plan_summary": {
+                "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+                "estimated_total_distance_after_recoverable_actions": int(
+                    claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+                ),
+                "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+            },
+            "scaffold": scaffold_payload,
+            "autofill": autofill_payload,
+            "readiness": readiness_payload,
+            "disclaimer": (
+                "Autofill preflight does not fabricate evidence. "
+                "Final readiness depends on validation and preview gates."
+            ),
+        }
+        out_path = self.artifacts_dir / "external_claim_campaign_autofill.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
     def run_external_claim_campaign_scaffold(
         self,
         registry_path: str | None = None,
@@ -1181,6 +1309,20 @@ class AgenticRuntime:
                 return {"status": "error", "reason": "ingest manifest ingest_payload_paths must be a list"}
             return {"status": "ok", "payload": [str(item) for item in paths]}
         return {"status": "error", "reason": "ingest manifest payload must be a list or object"}
+
+    def _load_evidence_map(self, path: str | None) -> dict[str, Any]:
+        if not path:
+            return {"status": "error", "reason": "evidence map path is required"}
+        payload_path = Path(path)
+        if not payload_path.exists():
+            return {"status": "error", "reason": f"evidence map not found: {payload_path}"}
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return {"status": "error", "reason": f"invalid evidence map json: {exc}"}
+        if not isinstance(payload, dict):
+            return {"status": "error", "reason": "evidence map payload must be an object"}
+        return {"status": "ok", "payload": payload}
 
     def _prepare_external_claim_context(
         self,
