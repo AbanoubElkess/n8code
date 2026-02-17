@@ -103,6 +103,10 @@ class ExternalClaimSandboxCampaignRunner:
                 - int(final_snapshot["external_claim_distance"]),
                 "comparable_external_baselines_increase": int(final_snapshot["comparable_external_baselines"])
                 - int(before_snapshot["comparable_external_baselines"]),
+                "total_claim_distance_reduction": int(before_snapshot["total_claim_distance"])
+                - int(final_snapshot["total_claim_distance"]),
+                "total_progress_ratio_gain": float(final_snapshot["total_progress_ratio"])
+                - float(before_snapshot["total_progress_ratio"]),
             },
             "disclaimer": (
                 "Campaign output is a sandbox projection from explicit user-provided evidence patches and payloads. "
@@ -284,6 +288,10 @@ class ExternalClaimSandboxCampaignRunner:
                         - int(after["external_claim_distance"]),
                         "comparable_external_baselines_increase": int(after["comparable_external_baselines"])
                         - int(before["comparable_external_baselines"]),
+                        "total_claim_distance_reduction": int(before["total_claim_distance"])
+                        - int(after["total_claim_distance"]),
+                        "total_progress_ratio_gain": float(after["total_progress_ratio"])
+                        - float(before["total_progress_ratio"]),
                     },
                     "normalization_result": normalization_result,
                     "replay_result": replay_result,
@@ -306,11 +314,28 @@ class ExternalClaimSandboxCampaignRunner:
             dry_run=True,
         )
         before = payload.get("before", {})
+        before_plan = payload.get("before_external_claim_plan", {})
+        if not isinstance(before_plan, dict):
+            before_plan = {}
+        progress = before_plan.get("distance_progress", {})
+        if not isinstance(progress, dict):
+            progress = {}
+        total_claim_distance = int(progress.get("current_total_distance", int(before.get("external_claim_distance", 0))))
+        max_total_claim_distance = int(
+            progress.get(
+                "max_total_distance",
+                int(before.get("required_external_baselines", 0)),
+            )
+        )
+        total_progress_ratio = float(progress.get("current_progress_ratio", 0.0))
         return {
             "external_claim_distance": int(before.get("external_claim_distance", 0)),
             "external_claim_ready": bool(before.get("external_claim_ready", False)),
             "comparable_external_baselines": int(before.get("comparable_external_baselines", 0)),
             "required_external_baselines": int(before.get("required_external_baselines", 0)),
+            "total_claim_distance": total_claim_distance,
+            "max_total_claim_distance": max_total_claim_distance,
+            "total_progress_ratio": total_progress_ratio,
         }
 
     def _load_overrides(self, *, path: str) -> dict[str, Any]:

@@ -111,6 +111,10 @@ class TestExternalClaimSandboxCampaignRunner(unittest.TestCase):
         self.assertEqual(payload["before"]["external_claim_distance"], 2)
         self.assertEqual(payload["after"]["external_claim_distance"], 2)
         self.assertEqual(payload["delta"]["external_claim_distance_reduction"], 0)
+        self.assertIn("total_claim_distance", payload["before"])
+        self.assertIn("total_progress_ratio", payload["before"])
+        self.assertIn("total_claim_distance_reduction", payload["delta"])
+        self.assertIn("total_progress_ratio_gain", payload["delta"])
         step = payload["baseline_steps"]["results"][0]
         self.assertEqual(step["status"], "blocked")
         self.assertGreater(len(step["unresolved_fields"]), 0)
@@ -191,9 +195,11 @@ class TestExternalClaimSandboxCampaignRunner(unittest.TestCase):
         self.assertEqual(payload["before"]["external_claim_distance"], 2)
         self.assertEqual(payload["after"]["external_claim_distance"], 0)
         self.assertEqual(payload["delta"]["external_claim_distance_reduction"], 2)
+        self.assertEqual(payload["delta"]["total_claim_distance_reduction"], 2)
         step = payload["baseline_steps"]["results"][0]
         self.assertEqual(step["status"], "ok")
         self.assertEqual(step["delta"]["external_claim_distance_reduction"], 1)
+        self.assertEqual(step["delta"]["total_claim_distance_reduction"], 1)
         self.assertEqual(payload["ingest_stage"]["results"][0]["status"], "ok")
 
 

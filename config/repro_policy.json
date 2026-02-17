@@ -25,7 +25,9 @@
   "promotion_gates": {
     "min_distance_reduction": 1,
     "max_after_external_claim_distance": null,
-    "require_external_claim_ready": false
+    "require_external_claim_ready": false,
+    "require_total_distance_non_increase": true,
+    "min_total_progress_ratio_gain": 0.0
   },
   "seed_control": {
     "enabled": true,

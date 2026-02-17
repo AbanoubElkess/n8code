@@ -57,6 +57,9 @@ class ExternalClaimPromotionService:
             "external_claim_ready": bool(after.get("external_claim_ready", False)),
             "comparable_external_baselines": int(after.get("comparable_external_baselines", 0)),
             "required_external_baselines": int(after.get("required_external_baselines", 0)),
+            "total_claim_distance": int(after.get("total_claim_distance", before["total_claim_distance"])),
+            "max_total_claim_distance": int(after.get("max_total_claim_distance", before["max_total_claim_distance"])),
+            "total_progress_ratio": float(after.get("total_progress_ratio", before["total_progress_ratio"])),
         }
         promotion_gates = self._load_promotion_gates()
         gate_evaluation = self._evaluate_execute_gates(
@@ -67,6 +70,12 @@ class ExternalClaimPromotionService:
         )
         projected_distance = int(projected_snapshot["external_claim_distance"])
         projected_reduction = int(before["external_claim_distance"]) - projected_distance
+        projected_total_distance_reduction = int(before["total_claim_distance"]) - int(
+            projected_snapshot["total_claim_distance"]
+        )
+        projected_total_progress_ratio_gain = float(projected_snapshot["total_progress_ratio"]) - float(
+            before["total_progress_ratio"]
+        )
         promotable = bool(gate_evaluation.get("pass", False))
         return {
             "status": "ok",
@@ -80,6 +89,8 @@ class ExternalClaimPromotionService:
                 "comparable_external_baselines_increase": int(
                     projected.get("delta", {}).get("comparable_external_baselines_increase", 0)
                 ),
+                "total_claim_distance_reduction": projected_total_distance_reduction,
+                "total_progress_ratio_gain": projected_total_progress_ratio_gain,
             },
             "projected_campaign_status": str(projected.get("status", "unknown")),
             "promotion_gates": promotion_gates,
@@ -144,10 +155,20 @@ class ExternalClaimPromotionService:
             "stage_status": "error",
             "distance_reduction": 0,
             "min_distance_reduction": int(promotion_gates["min_distance_reduction"]),
+            "total_claim_distance_reduction": 0,
+            "require_total_distance_non_increase": bool(
+                promotion_gates.get("require_total_distance_non_increase", True)
+            ),
+            "min_total_progress_ratio_gain": float(promotion_gates.get("min_total_progress_ratio_gain", 0.0)),
+            "total_progress_ratio_gain": 0.0,
             "max_after_external_claim_distance": promotion_gates["max_after_external_claim_distance"],
             "require_external_claim_ready": bool(promotion_gates["require_external_claim_ready"]),
             "after_external_claim_distance": int(before["external_claim_distance"]),
             "after_external_claim_ready": bool(before["external_claim_ready"]),
+            "before_total_claim_distance": int(before["total_claim_distance"]),
+            "after_total_claim_distance": int(before["total_claim_distance"]),
+            "before_total_progress_ratio": float(before["total_progress_ratio"]),
+            "after_total_progress_ratio": float(before["total_progress_ratio"]),
             "reasons": ["execute path did not complete"],
         }
         rollback_applied = False
@@ -215,12 +236,20 @@ class ExternalClaimPromotionService:
                 - int(after["external_claim_distance"]),
                 "comparable_external_baselines_increase": int(after["comparable_external_baselines"])
                 - int(before["comparable_external_baselines"]),
+                "total_claim_distance_reduction": int(before["total_claim_distance"])
+                - int(after["total_claim_distance"]),
+                "total_progress_ratio_gain": float(after["total_progress_ratio"])
+                - float(before["total_progress_ratio"]),
             },
             "execution_delta": {
                 "external_claim_distance_reduction": int(before["external_claim_distance"])
                 - int(executed_after["external_claim_distance"]),
                 "comparable_external_baselines_increase": int(executed_after["comparable_external_baselines"])
                 - int(before["comparable_external_baselines"]),
+                "total_claim_distance_reduction": int(before["total_claim_distance"])
+                - int(executed_after["total_claim_distance"]),
+                "total_progress_ratio_gain": float(executed_after["total_progress_ratio"])
+                - float(before["total_progress_ratio"]),
             },
             "ingest_stage": {
                 "count": len(ingest_results),
@@ -430,11 +459,28 @@ class ExternalClaimPromotionService:
             dry_run=True,
         )
         before = payload.get("before", {})
+        before_plan = payload.get("before_external_claim_plan", {})
+        if not isinstance(before_plan, dict):
+            before_plan = {}
+        progress = before_plan.get("distance_progress", {})
+        if not isinstance(progress, dict):
+            progress = {}
+        total_claim_distance = int(progress.get("current_total_distance", int(before.get("external_claim_distance", 0))))
+        max_total_claim_distance = int(
+            progress.get(
+                "max_total_distance",
+                int(before.get("required_external_baselines", 0)),
+            )
+        )
+        total_progress_ratio = float(progress.get("current_progress_ratio", 0.0))
         return {
             "external_claim_distance": int(before.get("external_claim_distance", 0)),
             "external_claim_ready": bool(before.get("external_claim_ready", False)),
             "comparable_external_baselines": int(before.get("comparable_external_baselines", 0)),
             "required_external_baselines": int(before.get("required_external_baselines", 0)),
+            "total_claim_distance": total_claim_distance,
+            "max_total_claim_distance": max_total_claim_distance,
+            "total_progress_ratio": total_progress_ratio,
         }
 
     def _derive_stage_status(
@@ -457,6 +503,8 @@ class ExternalClaimPromotionService:
             "min_distance_reduction": 1,
             "max_after_external_claim_distance": None,
             "require_external_claim_ready": False,
+            "require_total_distance_non_increase": True,
+            "min_total_progress_ratio_gain": 0.0,
         }
         policy_path = Path(self.policy_path)
         if not policy_path.exists():
@@ -474,6 +522,18 @@ class ExternalClaimPromotionService:
                 "min_distance_reduction": max(0, int(gates.get("min_distance_reduction", 1))),
                 "max_after_external_claim_distance": max_after,
                 "require_external_claim_ready": bool(gates.get("require_external_claim_ready", False)),
+                "require_total_distance_non_increase": bool(
+                    gates.get(
+                        "require_total_distance_non_increase",
+                        default_policy["require_total_distance_non_increase"],
+                    )
+                ),
+                "min_total_progress_ratio_gain": float(
+                    gates.get(
+                        "min_total_progress_ratio_gain",
+                        default_policy["min_total_progress_ratio_gain"],
+                    )
+                ),
             }
         except Exception:  # noqa: BLE001
             return default_policy
@@ -492,6 +552,14 @@ class ExternalClaimPromotionService:
         min_distance_reduction = int(promotion_gates.get("min_distance_reduction", 1))
         max_after = promotion_gates.get("max_after_external_claim_distance")
         require_ready = bool(promotion_gates.get("require_external_claim_ready", False))
+        require_total_non_increase = bool(promotion_gates.get("require_total_distance_non_increase", True))
+        min_total_progress_ratio_gain = float(promotion_gates.get("min_total_progress_ratio_gain", 0.0))
+        before_total_distance = int(before.get("total_claim_distance", before_distance))
+        after_total_distance = int(after.get("total_claim_distance", after_distance))
+        total_distance_reduction = before_total_distance - after_total_distance
+        before_total_progress_ratio = float(before.get("total_progress_ratio", 0.0))
+        after_total_progress_ratio = float(after.get("total_progress_ratio", 0.0))
+        total_progress_ratio_gain = after_total_progress_ratio - before_total_progress_ratio
         reasons: list[str] = []
 
         if stage_status != "ok":
@@ -506,6 +574,13 @@ class ExternalClaimPromotionService:
             )
         if require_ready and not bool(after.get("external_claim_ready", False)):
             reasons.append("after external_claim_ready is false but required by promotion gate")
+        if require_total_non_increase and after_total_distance > before_total_distance:
+            reasons.append(f"total claim distance regressed from {before_total_distance} to {after_total_distance}")
+        if total_progress_ratio_gain + 1e-12 < min_total_progress_ratio_gain:
+            reasons.append(
+                "total progress ratio gain "
+                f"{total_progress_ratio_gain:.6f} is below min_total_progress_ratio_gain {min_total_progress_ratio_gain:.6f}"
+            )
 
         gate_pass = len(reasons) == 0
         reason = "promotion execute gates satisfied" if gate_pass else "; ".join(reasons)
@@ -515,10 +590,18 @@ class ExternalClaimPromotionService:
             "stage_status": stage_status,
             "distance_reduction": distance_reduction,
             "min_distance_reduction": min_distance_reduction,
+            "total_claim_distance_reduction": total_distance_reduction,
+            "require_total_distance_non_increase": require_total_non_increase,
+            "min_total_progress_ratio_gain": min_total_progress_ratio_gain,
+            "total_progress_ratio_gain": total_progress_ratio_gain,
             "max_after_external_claim_distance": max_after,
             "require_external_claim_ready": require_ready,
             "after_external_claim_distance": after_distance,
             "after_external_claim_ready": bool(after.get("external_claim_ready", False)),
+            "before_total_claim_distance": before_total_distance,
+            "after_total_claim_distance": after_total_distance,
+            "before_total_progress_ratio": before_total_progress_ratio,
+            "after_total_progress_ratio": after_total_progress_ratio,
             "reasons": reasons,
         }
 
