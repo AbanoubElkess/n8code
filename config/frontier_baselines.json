@@ -1,0 +1,38 @@
+{
+  "registry_version": "2026-02-17",
+  "notes": "Declared baselines for AGAI-500. Non-comparable rows must never be reported as wins.",
+  "baselines": [
+    {
+      "baseline_id": "declared_internal_generalist_floor_v1",
+      "label": "Declared Internal Generalist Floor",
+      "source_type": "internal_reference",
+      "source": "internal calibration anchor",
+      "source_date": "2026-02-17",
+      "verified": true,
+      "enabled": true,
+      "suite_id": "quantum_hard_suite_v2_adversarial",
+      "scoring_protocol": "src/agai/quantum_suite.py:263",
+      "metrics": {
+        "quality": 0.74,
+        "aggregate_delta": 0.25,
+        "holdout_quality": 0.70,
+        "adversarial_quality": 0.66,
+        "public_overclaim_rate": 0.08
+      },
+      "notes": "Internal floor for regression visibility only; this is not an external SOTA claim."
+    },
+    {
+      "baseline_id": "external_frontier_placeholder_unverified",
+      "label": "External Frontier Placeholder (Unverified)",
+      "source_type": "external_reported",
+      "source": "pending-normalization",
+      "source_date": "unknown",
+      "verified": false,
+      "enabled": true,
+      "suite_id": "unknown-external-suite",
+      "scoring_protocol": "unknown-scoring",
+      "metrics": {},
+      "notes": "Placeholder entry kept intentionally non-comparable until replication protocol is completed."
+    }
+  ]
+}
