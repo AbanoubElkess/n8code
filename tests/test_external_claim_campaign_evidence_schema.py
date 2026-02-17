@@ -71,11 +71,22 @@ class TestExternalClaimCampaignEvidenceSchemaService(unittest.TestCase):
         self.assertIn("defaults", content)
         self.assertIn("baselines", content)
         self.assertIn("external-a", content["baselines"])
+        self.assertIn("generate_ingest_payload", content["defaults"])
+        self.assertFalse(content["defaults"]["generate_ingest_payload"])
+        self.assertIn("ingest_payload", content["defaults"])
         entry = content["baselines"]["external-a"]
         self.assertTrue(entry["align_to_eval"])
         self.assertAlmostEqual(float(entry["max_metric_delta"]), 0.03, places=6)
         self.assertEqual(entry["metrics"]["quality"], "")
         self.assertEqual(entry["metrics"]["aggregate_delta"], "")
+        self.assertIn("generate_ingest_payload", entry)
+        self.assertFalse(entry["generate_ingest_payload"])
+        self.assertIn("ingest_payload", entry)
+        self.assertEqual(entry["ingest_payload"]["baseline_id"], "external-a-extra")
+        self.assertEqual(entry["ingest_payload"]["suite_id"], "quantum_hard_suite_v2_adversarial")
+        self.assertEqual(entry["ingest_payload"]["scoring_protocol"], "src/agai/quantum_suite.py:263")
+        self.assertEqual(entry["ingest_payload"]["metrics"]["quality"], "")
+        self.assertEqual(entry["ingest_payload"]["metrics"]["aggregate_delta"], "")
         self.assertIn("external-claim-campaign-autofill", payload["next_command_hint"])
 
     def test_build_empty_when_scaffold_has_no_generated_files(self) -> None:
@@ -174,6 +185,9 @@ class TestRuntimeExternalClaimCampaignEvidenceSchema(unittest.TestCase):
         schema = payload["schema"]
         self.assertEqual(schema["status"], "ok")
         self.assertIn("next_command_hint", schema)
+        generated = json.loads(output_path.read_text(encoding="utf-8"))
+        self.assertIn("external-placeholder", generated["baselines"])
+        self.assertIn("ingest_payload", generated["baselines"]["external-placeholder"])
 
 
 if __name__ == "__main__":

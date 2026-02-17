@@ -31,6 +31,15 @@ class ExternalClaimCampaignEvidenceSchemaService:
             "align_to_eval": True,
             "replace_metrics": False,
             "max_metric_delta": float(default_max_metric_delta),
+            "generate_ingest_payload": False,
+            "ingest_payload": {
+                "source_type": "external_reported",
+                "verified": False,
+                "enabled": True,
+                "evidence": {
+                    "replication_status": "pending",
+                },
+            },
         }
 
         baselines: dict[str, Any] = {}
@@ -60,6 +69,13 @@ class ExternalClaimCampaignEvidenceSchemaService:
             baseline_entry["align_to_eval"] = True
             baseline_entry["replace_metrics"] = False
             baseline_entry["max_metric_delta"] = float(default_max_metric_delta)
+            baseline_entry["generate_ingest_payload"] = False
+            baseline_entry["ingest_payload"] = self._build_ingest_template(
+                baseline_id=baseline_id,
+                suite_id=suite_id,
+                scoring_reference=scoring_reference,
+                patch_template=normalized_template,
+            )
             baselines[baseline_id] = baseline_entry
             rows.append(
                 {
@@ -105,6 +121,7 @@ class ExternalClaimCampaignEvidenceSchemaService:
                 "align_to_eval": True,
                 "replace_metrics": False,
                 "max_metric_delta": float(default_max_metric_delta),
+                "generate_ingest_payload": False,
             },
             "rows": rows,
             "template_errors": template_errors,
@@ -155,3 +172,48 @@ class ExternalClaimCampaignEvidenceSchemaService:
         if isinstance(payload, str) and not payload.strip():
             return [prefix] if prefix else []
         return []
+
+    def _build_ingest_template(
+        self,
+        *,
+        baseline_id: str,
+        suite_id: str,
+        scoring_reference: str,
+        patch_template: dict[str, Any],
+    ) -> dict[str, Any]:
+        template_evidence = patch_template.get("evidence", {})
+        if not isinstance(template_evidence, dict):
+            template_evidence = {}
+        template_metrics = patch_template.get("metrics", {})
+        if not isinstance(template_metrics, dict):
+            template_metrics = {}
+
+        source = str(patch_template.get("source", ""))
+        source_date = str(patch_template.get("source_date", ""))
+        citation = str(template_evidence.get("citation", ""))
+        retrieval_date = str(template_evidence.get("retrieval_date", ""))
+        verification_method = str(template_evidence.get("verification_method", ""))
+        metrics: dict[str, Any] = {}
+        for key, value in template_metrics.items():
+            metrics[str(key)] = value
+
+        return {
+            "baseline_id": f"{baseline_id}-extra",
+            "label": "",
+            "source_type": "external_reported",
+            "source": source,
+            "source_date": source_date,
+            "verified": False,
+            "enabled": True,
+            "suite_id": suite_id,
+            "scoring_protocol": scoring_reference,
+            "evidence": {
+                "citation": citation,
+                "artifact_hash": "",
+                "retrieval_date": retrieval_date,
+                "verification_method": verification_method,
+                "replication_status": "pending",
+            },
+            "metrics": metrics,
+            "notes": "",
+        }
