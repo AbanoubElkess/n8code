@@ -13,6 +13,33 @@ def run(cmd: list[str]) -> tuple[int, str]:
     return proc.returncode, proc.stdout.strip()
 
 
+def label_color(name: str) -> str:
+    palette = {
+        "phase-0": "0052CC",
+        "phase-1": "0E8A16",
+        "phase-2": "5319E7",
+        "phase-3": "FBCA04",
+        "phase-4": "D93F0B",
+        "phase-5": "B60205",
+        "program": "1D76DB",
+        "governance": "C2E0C6",
+        "eval": "EDEDED",
+        "market": "5319E7",
+        "core": "0E8A16",
+        "performance": "FBCA04",
+        "quantum": "0052CC",
+        "validation": "B60205",
+    }
+    return palette.get(name, "D4C5F9")
+
+
+def ensure_labels(gh: str, labels: set[str]) -> None:
+    for label in sorted(labels):
+        color = label_color(label)
+        description = f"Auto-managed label: {label}"
+        run([gh, "label", "create", label, "--color", color, "--description", description, "--force"])
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     plan_path = root / "config" / "phases.json"
@@ -45,6 +72,11 @@ def main() -> int:
         print("No issues found in phases.json.")
         return 1
 
+    all_labels: set[str] = set()
+    for issue in issues:
+        all_labels.update(issue.get("labels", []))
+    ensure_labels(gh=gh, labels=all_labels)
+
     created = 0
     for issue in issues:
         title = f"[{issue['jira_id']}][{issue['phase']}] {issue['title']}"
@@ -65,4 +97,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
