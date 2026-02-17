@@ -56,6 +56,14 @@ def build_parser() -> argparse.ArgumentParser:
     normalize.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
     normalize.add_argument("--align-to-eval", action="store_true", help="Align suite_id/scoring_protocol to eval artifact")
     normalize.add_argument("--replace-metrics", action="store_true", help="Replace baseline metrics with patch.metrics")
+    draft = sub.add_parser(
+        "draft-external-normalization-patch",
+        help="Draft a strict patch template for a blocked external baseline using comparability reasons",
+    )
+    draft.add_argument("--baseline-id", required=True, help="Baseline ID in registry")
+    draft.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    draft.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    draft.add_argument("--output", default="", help="Optional output path for generated patch template")
     ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
     ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
     ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
@@ -114,6 +122,13 @@ def main() -> None:
             eval_path=str(args.eval_path or "") or None,
             align_to_eval=bool(args.align_to_eval),
             replace_metrics=bool(args.replace_metrics),
+        )
+    elif args.command == "draft-external-normalization-patch":
+        output = runtime.run_draft_external_normalization_patch(
+            baseline_id=str(args.baseline_id),
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            output_path=str(args.output or "") or None,
         )
     elif args.command == "ingest-external-baseline":
         output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)

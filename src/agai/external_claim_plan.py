@@ -199,8 +199,10 @@ class ExternalClaimPlanner:
                         "Populate required evidence fields and re-ingest baseline payload before attestation."
                     ),
                     "command_hint": (
-                        "ingest-external-baseline --input <updated_payload.json> "
-                        f"--registry-path {registry_path}"
+                        "draft-external-normalization-patch "
+                        f"--baseline-id {baseline_id} "
+                        f"--registry-path {registry_path} "
+                        "--output <normalization_patch.json>"
                     ),
                 }
             )
@@ -212,6 +214,11 @@ class ExternalClaimPlanner:
                     "description": (
                         "Replace placeholder source/citation/verification metadata with concrete traceable values."
                     ),
+                    "command_hint": (
+                        "draft-external-normalization-patch "
+                        f"--baseline-id {baseline_id} "
+                        f"--registry-path {registry_path}"
+                    ),
                 }
             )
         if invalid_dates:
@@ -220,6 +227,11 @@ class ExternalClaimPlanner:
                     "priority": 1,
                     "action_type": "normalize_metadata_dates",
                     "description": "Set source_date and evidence retrieval_date to ISO-8601 date format (YYYY-MM-DD).",
+                    "command_hint": (
+                        "draft-external-normalization-patch "
+                        f"--baseline-id {baseline_id} "
+                        f"--registry-path {registry_path}"
+                    ),
                 }
             )
         if suite_mismatch or scoring_mismatch:
@@ -230,6 +242,13 @@ class ExternalClaimPlanner:
                     "description": "Align suite_id and scoring_protocol with current internal hard-suite harness.",
                     "target_suite_id": suite_id,
                     "target_scoring_protocol": scoring_protocol,
+                    "command_hint": (
+                        "normalize-external-baseline "
+                        f"--baseline-id {baseline_id} "
+                        "--input <normalization_patch.json> "
+                        f"--registry-path {registry_path} "
+                        "--align-to-eval"
+                    ),
                 }
             )
         if missing_metrics:
@@ -241,6 +260,11 @@ class ExternalClaimPlanner:
                         "Add overlapping metrics (for example quality, aggregate_delta, holdout/adversarial "
                         "quality, overclaim rate) so comparability can be computed."
                     ),
+                    "command_hint": (
+                        "draft-external-normalization-patch "
+                        f"--baseline-id {baseline_id} "
+                        f"--registry-path {registry_path}"
+                    ),
                 }
             )
         if insufficient_overlap:
@@ -250,6 +274,11 @@ class ExternalClaimPlanner:
                     "action_type": "increase_metric_overlap",
                     "description": (
                         "Provide additional overlapping metrics so attestation meets minimum overlap requirements."
+                    ),
+                    "command_hint": (
+                        "draft-external-normalization-patch "
+                        f"--baseline-id {baseline_id} "
+                        f"--registry-path {registry_path}"
                     ),
                 }
             )

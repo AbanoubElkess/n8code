@@ -11,6 +11,7 @@ from .alignment import ReflectionDebateLoop
 from .baseline_attestation import ExternalBaselineAttestationService
 from .baseline_ingestion import ExternalBaselineIngestionService
 from .baseline_normalization import ExternalBaselineNormalizationService
+from .baseline_patch_template import ExternalBaselinePatchTemplateService
 from .baseline_registry import DeclaredBaselineComparator
 from .benchmark_tracker import BenchmarkTracker
 from .compute_controller import TestTimeComputeController
@@ -575,6 +576,43 @@ class AgenticRuntime:
         }
         out_path = self.artifacts_dir / "baseline_normalize_result.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_draft_external_normalization_patch(
+        self,
+        baseline_id: str,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any]:
+        if eval_path:
+            path = Path(eval_path)
+            if not path.exists():
+                return {
+                    "status": "error",
+                    "reason": f"eval artifact not found: {path}",
+                    "baseline_id": baseline_id,
+                }
+            eval_report = json.loads(path.read_text(encoding="utf-8"))
+            eval_source = "explicit-eval-artifact"
+        else:
+            eval_report, eval_source = self._load_or_run_eval_report()
+
+        active_registry = registry_path or "config/frontier_baselines.json"
+        service = ExternalBaselinePatchTemplateService(registry_path=active_registry)
+        payload = service.build_template(
+            baseline_id=baseline_id,
+            eval_report=eval_report,
+        )
+        payload["sources"] = {
+            "eval": eval_source,
+        }
+
+        base_name = f"baseline_patch_template_{baseline_id}.json"
+        out_path = Path(output_path) if output_path else (self.artifacts_dir / base_name)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        payload["output_path"] = str(out_path)
         return payload
 
     def run_attest_external_baseline(
