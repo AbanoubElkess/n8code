@@ -154,6 +154,30 @@ class TestExternalClaimPromotionService(unittest.TestCase):
             ],
         }
 
+    def _write_projection_miss_history(self, path: Path) -> None:
+        rows = [
+            {
+                "timestamp": "2026-02-17T00:00:00",
+                "external_claim_distance": 2,
+                "total_claim_distance": 2,
+                "projected_total_claim_distance": 1,
+                "total_progress_ratio": 0.3333333333333333,
+                "projected_total_progress_ratio": 0.6666666666666666,
+            },
+            {
+                "timestamp": "2026-02-17T00:10:00",
+                "external_claim_distance": 2,
+                "total_claim_distance": 2,
+                "projected_total_claim_distance": 1,
+                "total_progress_ratio": 0.3333333333333333,
+                "projected_total_progress_ratio": 0.6666666666666666,
+            },
+        ]
+        path.write_text(
+            "\n".join(json.dumps(row, ensure_ascii=True) for row in rows) + "\n",
+            encoding="utf-8",
+        )
+
     def test_preview_returns_hash_and_promotable_true_for_valid_campaign(self) -> None:
         campaign = self._build_valid_campaign()
         preview = self.service.preview(
@@ -291,6 +315,108 @@ class TestExternalClaimPromotionService(unittest.TestCase):
         self.assertFalse(result["source_registry_mutated"])
         self.assertFalse(result["gate_evaluation"]["pass"])
         self.assertIn("total progress ratio gain", result["gate_evaluation"]["reason"])
+        self.assertEqual(before_bytes, after_bytes)
+
+    def test_preview_not_promotable_when_projection_realism_gate_required(self) -> None:
+        self.policy_path.write_text(
+            json.dumps(
+                {
+                    "release_gates": {
+                        "hard_suite_absolute_win_required": True,
+                        "moonshot_general_benchmarks_gate": False,
+                        "min_comparable_external_baselines_for_external_claim": 2,
+                        "require_claim_calibration_for_external_claim": True,
+                        "min_combined_average_reality_score_for_external_claim": 0.90,
+                        "max_public_overclaim_rate_for_external_claim": 0.05,
+                    },
+                    "promotion_gates": {
+                        "min_distance_reduction": 1,
+                        "max_after_external_claim_distance": None,
+                        "require_external_claim_ready": False,
+                        "require_total_distance_non_increase": True,
+                        "min_total_progress_ratio_gain": 0.0,
+                        "require_projection_realism_pass": True,
+                        "max_projection_distance_shortfall": 0.0,
+                        "min_projection_progress_delivery_ratio": 0.5,
+                        "min_projection_delivery_samples": 1,
+                    },
+                },
+                ensure_ascii=True,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        history_path = self.temp_dir / "direction_history.jsonl"
+        self._write_projection_miss_history(history_path)
+        strict_service = ExternalClaimPromotionService(
+            policy_path=str(self.policy_path),
+            direction_history_path=str(history_path),
+        )
+        campaign = self._build_valid_campaign()
+        preview = strict_service.preview(
+            eval_report=self.eval_report,
+            source_registry_path=str(self.source_registry),
+            campaign_config=campaign,
+            default_max_metric_delta=0.02,
+        )
+        self.assertEqual(preview["status"], "ok")
+        self.assertFalse(preview["promotable"])
+        self.assertFalse(preview["gate_evaluation"]["pass"])
+        self.assertIn("projection realism gate failed", preview["gate_evaluation"]["reason"])
+        self.assertFalse(preview["gate_evaluation"]["projection_realism_gate"]["pass"])
+        self.assertTrue(preview["gate_evaluation"]["projection_realism_gate"]["evaluated"])
+
+    def test_execute_rolls_back_when_projection_realism_gate_required(self) -> None:
+        self.policy_path.write_text(
+            json.dumps(
+                {
+                    "release_gates": {
+                        "hard_suite_absolute_win_required": True,
+                        "moonshot_general_benchmarks_gate": False,
+                        "min_comparable_external_baselines_for_external_claim": 2,
+                        "require_claim_calibration_for_external_claim": True,
+                        "min_combined_average_reality_score_for_external_claim": 0.90,
+                        "max_public_overclaim_rate_for_external_claim": 0.05,
+                    },
+                    "promotion_gates": {
+                        "min_distance_reduction": 1,
+                        "max_after_external_claim_distance": None,
+                        "require_external_claim_ready": False,
+                        "require_total_distance_non_increase": True,
+                        "min_total_progress_ratio_gain": 0.0,
+                        "require_projection_realism_pass": True,
+                        "max_projection_distance_shortfall": 0.0,
+                        "min_projection_progress_delivery_ratio": 0.5,
+                        "min_projection_delivery_samples": 1,
+                    },
+                },
+                ensure_ascii=True,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        history_path = self.temp_dir / "direction_history.jsonl"
+        self._write_projection_miss_history(history_path)
+        strict_service = ExternalClaimPromotionService(
+            policy_path=str(self.policy_path),
+            direction_history_path=str(history_path),
+        )
+        campaign = self._build_valid_campaign()
+        before_bytes = self.source_registry.read_bytes()
+        confirmation_hash = hashlib.sha256(before_bytes).hexdigest()
+        result = strict_service.execute(
+            eval_report=self.eval_report,
+            source_registry_path=str(self.source_registry),
+            campaign_config=campaign,
+            default_max_metric_delta=0.02,
+            confirmation_hash=confirmation_hash,
+        )
+        after_bytes = self.source_registry.read_bytes()
+        self.assertEqual(result["status"], "error")
+        self.assertTrue(result["rollback_applied"])
+        self.assertFalse(result["source_registry_mutated"])
+        self.assertFalse(result["gate_evaluation"]["pass"])
+        self.assertIn("projection realism gate failed", result["gate_evaluation"]["reason"])
         self.assertEqual(before_bytes, after_bytes)
 
 

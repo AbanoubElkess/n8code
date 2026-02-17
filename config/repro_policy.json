@@ -29,7 +29,11 @@
     "max_after_external_claim_distance": null,
     "require_external_claim_ready": false,
     "require_total_distance_non_increase": true,
-    "min_total_progress_ratio_gain": 0.0
+    "min_total_progress_ratio_gain": 0.0,
+    "require_projection_realism_pass": false,
+    "max_projection_distance_shortfall": 0.0,
+    "min_projection_progress_delivery_ratio": 0.5,
+    "min_projection_delivery_samples": 1
   },
   "seed_control": {
     "enabled": true,

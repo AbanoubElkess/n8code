@@ -86,7 +86,8 @@ class AgenticRuntime:
         self.external_claim_campaign_autofill = ExternalClaimCampaignAutofillService()
         self.external_claim_campaign_validator = ExternalClaimCampaignValidatorService()
         self.external_claim_promotion = ExternalClaimPromotionService(
-            policy_path=str(self.release_status.policy_path)
+            policy_path=str(self.release_status.policy_path),
+            direction_history_path=str(self.artifacts_dir / "direction_history.jsonl"),
         )
         self.declared_baseline_comparator = DeclaredBaselineComparator()
         self.tool_engine = ToolReasoningEngine(self.tool_registry)

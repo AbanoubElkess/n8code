@@ -11,15 +11,21 @@ from .baseline_attestation import ExternalBaselineAttestationService
 from .baseline_ingestion import ExternalBaselineIngestionService
 from .baseline_normalization import ExternalBaselineNormalizationService
 from .baseline_patch_template import ExternalBaselinePatchTemplateService
+from .direction_tracker import DirectionTracker
 from .external_claim_campaign import ExternalClaimSandboxCampaignRunner
 from .external_claim_replay import ExternalClaimReplayRunner
 
 
 class ExternalClaimPromotionService:
-    def __init__(self, policy_path: str = "config/repro_policy.json") -> None:
+    def __init__(
+        self,
+        policy_path: str = "config/repro_policy.json",
+        direction_history_path: str = "artifacts/direction_history.jsonl",
+    ) -> None:
         self.policy_path = policy_path
         self.replay = ExternalClaimReplayRunner(policy_path=policy_path)
         self.campaign = ExternalClaimSandboxCampaignRunner(policy_path=policy_path)
+        self.direction_tracker = DirectionTracker(history_path=direction_history_path)
 
     def preview(
         self,
@@ -145,6 +151,7 @@ class ExternalClaimPromotionService:
         )
         registry_bytes_before = source_path.read_bytes()
         promotion_gates = self._load_promotion_gates()
+        projection_realism_gate = self._projection_realism_snapshot(promotion_gates=promotion_gates)
         ingest_results: list[dict[str, Any]] = []
         step_results: list[dict[str, Any]] = []
         executed_after = dict(before)
@@ -163,12 +170,16 @@ class ExternalClaimPromotionService:
             "total_progress_ratio_gain": 0.0,
             "max_after_external_claim_distance": promotion_gates["max_after_external_claim_distance"],
             "require_external_claim_ready": bool(promotion_gates["require_external_claim_ready"]),
+            "require_projection_realism_pass": bool(
+                promotion_gates.get("require_projection_realism_pass", False)
+            ),
             "after_external_claim_distance": int(before["external_claim_distance"]),
             "after_external_claim_ready": bool(before["external_claim_ready"]),
             "before_total_claim_distance": int(before["total_claim_distance"]),
             "after_total_claim_distance": int(before["total_claim_distance"]),
             "before_total_progress_ratio": float(before["total_progress_ratio"]),
             "after_total_progress_ratio": float(before["total_progress_ratio"]),
+            "projection_realism_gate": projection_realism_gate,
             "reasons": ["execute path did not complete"],
         }
         rollback_applied = False
@@ -510,6 +521,10 @@ class ExternalClaimPromotionService:
             "require_external_claim_ready": False,
             "require_total_distance_non_increase": True,
             "min_total_progress_ratio_gain": 0.0,
+            "require_projection_realism_pass": False,
+            "max_projection_distance_shortfall": 0.0,
+            "min_projection_progress_delivery_ratio": 0.5,
+            "min_projection_delivery_samples": 1,
         }
         policy_path = Path(self.policy_path)
         if not policy_path.exists():
@@ -539,6 +554,33 @@ class ExternalClaimPromotionService:
                         default_policy["min_total_progress_ratio_gain"],
                     )
                 ),
+                "require_projection_realism_pass": bool(
+                    gates.get(
+                        "require_projection_realism_pass",
+                        default_policy["require_projection_realism_pass"],
+                    )
+                ),
+                "max_projection_distance_shortfall": float(
+                    gates.get(
+                        "max_projection_distance_shortfall",
+                        default_policy["max_projection_distance_shortfall"],
+                    )
+                ),
+                "min_projection_progress_delivery_ratio": float(
+                    gates.get(
+                        "min_projection_progress_delivery_ratio",
+                        default_policy["min_projection_progress_delivery_ratio"],
+                    )
+                ),
+                "min_projection_delivery_samples": max(
+                    1,
+                    int(
+                        gates.get(
+                            "min_projection_delivery_samples",
+                            default_policy["min_projection_delivery_samples"],
+                        )
+                    ),
+                ),
             }
         except Exception:  # noqa: BLE001
             return default_policy
@@ -559,12 +601,14 @@ class ExternalClaimPromotionService:
         require_ready = bool(promotion_gates.get("require_external_claim_ready", False))
         require_total_non_increase = bool(promotion_gates.get("require_total_distance_non_increase", True))
         min_total_progress_ratio_gain = float(promotion_gates.get("min_total_progress_ratio_gain", 0.0))
+        require_projection_realism_pass = bool(promotion_gates.get("require_projection_realism_pass", False))
         before_total_distance = int(before.get("total_claim_distance", before_distance))
         after_total_distance = int(after.get("total_claim_distance", after_distance))
         total_distance_reduction = before_total_distance - after_total_distance
         before_total_progress_ratio = float(before.get("total_progress_ratio", 0.0))
         after_total_progress_ratio = float(after.get("total_progress_ratio", 0.0))
         total_progress_ratio_gain = after_total_progress_ratio - before_total_progress_ratio
+        projection_realism_gate = self._projection_realism_snapshot(promotion_gates=promotion_gates)
         reasons: list[str] = []
 
         if stage_status != "ok":
@@ -586,6 +630,11 @@ class ExternalClaimPromotionService:
                 "total progress ratio gain "
                 f"{total_progress_ratio_gain:.6f} is below min_total_progress_ratio_gain {min_total_progress_ratio_gain:.6f}"
             )
+        if require_projection_realism_pass and not bool(projection_realism_gate.get("pass", False)):
+            reasons.append(
+                "projection realism gate failed: "
+                + str(projection_realism_gate.get("reason", "projection realism thresholds not satisfied"))
+            )
 
         gate_pass = len(reasons) == 0
         reason = "promotion execute gates satisfied" if gate_pass else "; ".join(reasons)
@@ -601,12 +650,58 @@ class ExternalClaimPromotionService:
             "total_progress_ratio_gain": total_progress_ratio_gain,
             "max_after_external_claim_distance": max_after,
             "require_external_claim_ready": require_ready,
+            "require_projection_realism_pass": require_projection_realism_pass,
             "after_external_claim_distance": after_distance,
             "after_external_claim_ready": bool(after.get("external_claim_ready", False)),
             "before_total_claim_distance": before_total_distance,
             "after_total_claim_distance": after_total_distance,
             "before_total_progress_ratio": before_total_progress_ratio,
             "after_total_progress_ratio": after_total_progress_ratio,
+            "projection_realism_gate": projection_realism_gate,
+            "reasons": reasons,
+        }
+
+    def _projection_realism_snapshot(self, *, promotion_gates: dict[str, Any]) -> dict[str, Any]:
+        summary = self.direction_tracker.summary()
+        max_shortfall = float(promotion_gates.get("max_projection_distance_shortfall", 0.0))
+        min_delivery_ratio = float(promotion_gates.get("min_projection_progress_delivery_ratio", 0.5))
+        min_samples = max(1, int(promotion_gates.get("min_projection_delivery_samples", 1)))
+        samples = int(summary.get("projection_delivery_samples", 0))
+        latest_shortfall = float(summary.get("latest_projection_distance_shortfall", 0.0))
+        latest_delivery_ratio = float(summary.get("latest_projection_progress_delivery_ratio", 1.0))
+        evaluated = samples >= min_samples
+        gate_pass = (
+            evaluated
+            and latest_shortfall <= (max_shortfall + 1e-9)
+            and latest_delivery_ratio >= (min_delivery_ratio - 1e-9)
+        )
+        reasons: list[str] = []
+        if not evaluated:
+            reasons.append(f"projection_delivery_samples {samples} below required {min_samples}")
+        if evaluated and latest_shortfall > (max_shortfall + 1e-9):
+            reasons.append(
+                f"latest_projection_distance_shortfall {latest_shortfall:.6f} exceeds max_projection_distance_shortfall {max_shortfall:.6f}"
+            )
+        if evaluated and latest_delivery_ratio < (min_delivery_ratio - 1e-9):
+            reasons.append(
+                "latest_projection_progress_delivery_ratio "
+                f"{latest_delivery_ratio:.6f} below min_projection_progress_delivery_ratio {min_delivery_ratio:.6f}"
+            )
+        reason = "projection realism thresholds satisfied" if gate_pass else "; ".join(reasons)
+        return {
+            "pass": gate_pass,
+            "evaluated": evaluated,
+            "reason": reason,
+            "projection_delivery_samples": samples,
+            "min_projection_delivery_samples": min_samples,
+            "latest_projection_distance_shortfall": latest_shortfall,
+            "max_projection_distance_shortfall": max_shortfall,
+            "latest_projection_progress_delivery_ratio": latest_delivery_ratio,
+            "min_projection_progress_delivery_ratio": min_delivery_ratio,
+            "mean_projection_distance_shortfall": float(summary.get("mean_projection_distance_shortfall", 0.0)),
+            "mean_projection_progress_delivery_ratio": float(
+                summary.get("mean_projection_progress_delivery_ratio", 1.0)
+            ),
             "reasons": reasons,
         }
 
