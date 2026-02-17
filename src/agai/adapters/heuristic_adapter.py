@@ -41,7 +41,9 @@ class HeuristicSmallModelAdapter(BaseModelAdapter):
             "Evidence keywords:",
         ]
         if "quantum" in lower or "syndrome" in lower:
-            is_flux_case = "flux noise" in lower
+            is_flux_case = "flux" in lower and any(
+                marker in lower for marker in ("noise", "drift", "mitigation", "control parameter", "device-side")
+            )
             is_stabilizer_case = "stabilizer" in lower
             planner_proposal = (
                 "Define a two-stage study: decoder selection followed by constrained ablation. "

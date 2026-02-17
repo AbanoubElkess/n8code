@@ -31,6 +31,33 @@ CONCEPT_LEXICON: dict[str, set[str]] = {
 }
 
 
+def _strip_evidence_keywords(answer: str) -> str:
+    headers = {
+        "proposal:",
+        "risks:",
+        "next experiment:",
+        "integrated proposal:",
+        "integrated risk:",
+        "integrated experiment:",
+    }
+    keep: list[str] = []
+    in_evidence_block = False
+    for raw_line in answer.splitlines():
+        cleaned = raw_line.strip()
+        lower = cleaned.lower()
+        if lower in headers:
+            in_evidence_block = False
+            keep.append(raw_line)
+            continue
+        if lower == "evidence keywords:":
+            in_evidence_block = True
+            continue
+        if in_evidence_block:
+            continue
+        keep.append(raw_line)
+    return "\n".join(keep)
+
+
 def _tokenize(text: str) -> list[str]:
     return [token.lower() for token in TOKEN_RE.findall(text)]
 
@@ -163,7 +190,8 @@ def holdout_quantum_suite() -> list[EvalCase]:
 
 def score_quantum_answer(expected_hint: str, answer: str) -> float:
     expected_tokens = set(_tokenize(expected_hint))
-    observed_list = _tokenize(answer)
+    normalized_answer = _strip_evidence_keywords(answer)
+    observed_list = _tokenize(normalized_answer)
     observed_tokens = set(observed_list)
 
     lexical_coverage = len(expected_tokens & observed_tokens) / (len(expected_tokens) or 1)
@@ -173,7 +201,7 @@ def score_quantum_answer(expected_hint: str, answer: str) -> float:
         _concept_vector(observed_tokens),
     )
 
-    signals = _rubric_signals(tokens=observed_tokens, answer=answer)
+    signals = _rubric_signals(tokens=observed_tokens, answer=normalized_answer)
     base_score = (
         0.30 * lexical_coverage
         + 0.25 * semantic_coverage

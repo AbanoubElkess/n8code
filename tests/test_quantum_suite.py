@@ -43,6 +43,27 @@ class TestQuantumSuite(unittest.TestCase):
         balanced_score = score_quantum_answer(expected, balanced)
         self.assertLess(stuffed_score, balanced_score)
 
+    def test_evidence_keyword_section_is_ignored(self) -> None:
+        expected = "stabilizer logical error rate runtime constraint testable"
+        base_answer = (
+            "Proposal:\n"
+            "Adjust stabilizer schedule to lower logical error rate with runtime constraint checks.\n"
+            "Risks:\n"
+            "Risk: calibration drift can hide regressions.\n"
+            "Next experiment:\n"
+            "Run ablation and falsification on held-out channels."
+        )
+        with_evidence = (
+            f"{base_answer}\n"
+            "Evidence keywords:\n"
+            "stabilizer, logical error rate, runtime constraint, testable, falsification, ablation"
+        )
+        self.assertAlmostEqual(
+            score_quantum_answer(expected, base_answer),
+            score_quantum_answer(expected, with_evidence),
+            places=6,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

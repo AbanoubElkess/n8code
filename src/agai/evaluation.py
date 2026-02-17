@@ -22,6 +22,8 @@ class Evaluator:
             "min_aggregate_delta": 0.3,
             "min_holdout_quality": 0.72,
             "max_public_holdout_quality_delta": 0.2,
+            "min_specialist_public_aggregate_delta": 0.0,
+            "min_specialist_holdout_aggregate_delta": 0.0,
         }
         path = Path(self.benchmark_target_path)
         if not path.exists():
@@ -38,6 +40,18 @@ class Evaluator:
                 "min_holdout_quality": float(targets.get("min_holdout_quality", default_targets["min_holdout_quality"])),
                 "max_public_holdout_quality_delta": float(
                     targets.get("max_public_holdout_quality_delta", default_targets["max_public_holdout_quality_delta"])
+                ),
+                "min_specialist_public_aggregate_delta": float(
+                    targets.get(
+                        "min_specialist_public_aggregate_delta",
+                        default_targets["min_specialist_public_aggregate_delta"],
+                    )
+                ),
+                "min_specialist_holdout_aggregate_delta": float(
+                    targets.get(
+                        "min_specialist_holdout_aggregate_delta",
+                        default_targets["min_specialist_holdout_aggregate_delta"],
+                    )
                 ),
             }
         except Exception:  # noqa: BLE001
@@ -146,6 +160,12 @@ class Evaluator:
             baseline_agent_id=baseline_agent_id,
             baseline_mode="specialist",
         )
+        specialist_reference_holdout = self._evaluate_split(
+            cases=holdout_quantum_suite(),
+            orchestrator=orchestrator,
+            baseline_agent_id=baseline_agent_id,
+            baseline_mode="specialist",
+        )
         details = public["details"]
         scorecard = public["scorecard"]
         aggregate_delta = float(public["aggregate_delta"])
@@ -168,6 +188,14 @@ class Evaluator:
         aggregate_delta_gap = max(0.0, float(targets["min_aggregate_delta"]) - float(aggregate_delta))
         holdout_quality_gap = max(0.0, float(targets["min_holdout_quality"]) - holdout_quality)
         split_delta_gap = max(0.0, split_quality_delta - float(targets["max_public_holdout_quality_delta"]))
+        specialist_public_gap = max(
+            0.0,
+            float(targets["min_specialist_public_aggregate_delta"]) - float(specialist_reference["aggregate_delta"]),
+        )
+        specialist_holdout_gap = max(
+            0.0,
+            float(targets["min_specialist_holdout_aggregate_delta"]) - float(specialist_reference_holdout["aggregate_delta"]),
+        )
         worst_case_margin = (
             min(row["margin_over_min_case_score"] for row in per_case_gap)
             if per_case_gap
@@ -176,7 +204,7 @@ class Evaluator:
         case_margin_gap = max(0.0, float(targets["min_case_margin"]) - float(worst_case_margin))
         remaining_distance = quality_gap + pass_rate_gap + aggregate_delta_gap + sum(
             row["gap_to_min_case_score"] for row in per_case_gap
-        ) + case_margin_gap + holdout_quality_gap + split_delta_gap
+        ) + case_margin_gap + holdout_quality_gap + split_delta_gap + specialist_public_gap + specialist_holdout_gap
         benchmark_progress = {
             "targets": targets,
             "observed": {
@@ -187,7 +215,8 @@ class Evaluator:
                 "holdout_quality": holdout_quality,
                 "holdout_pass_rate": holdout_pass_rate,
                 "split_quality_delta": split_quality_delta,
-                "specialist_reference_aggregate_delta": float(specialist_reference["aggregate_delta"]),
+                "specialist_reference_public_aggregate_delta": float(specialist_reference["aggregate_delta"]),
+                "specialist_reference_holdout_aggregate_delta": float(specialist_reference_holdout["aggregate_delta"]),
             },
             "gaps": {
                 "quality_gap": quality_gap,
@@ -196,6 +225,8 @@ class Evaluator:
                 "case_margin_gap": case_margin_gap,
                 "holdout_quality_gap": holdout_quality_gap,
                 "split_delta_gap": split_delta_gap,
+                "specialist_public_gap": specialist_public_gap,
+                "specialist_holdout_gap": specialist_holdout_gap,
                 "per_case_gap": per_case_gap,
                 "remaining_distance": remaining_distance,
             },
@@ -210,9 +241,16 @@ class Evaluator:
             "holdout_details": holdout["details"],
             "holdout_aggregate_delta": float(holdout["aggregate_delta"]),
             "specialist_reference": {
-                "scorecard": specialist_reference["scorecard"].__dict__,
-                "details": specialist_reference["details"],
-                "aggregate_delta": float(specialist_reference["aggregate_delta"]),
+                "public": {
+                    "scorecard": specialist_reference["scorecard"].__dict__,
+                    "details": specialist_reference["details"],
+                    "aggregate_delta": float(specialist_reference["aggregate_delta"]),
+                },
+                "holdout": {
+                    "scorecard": specialist_reference_holdout["scorecard"].__dict__,
+                    "details": specialist_reference_holdout["details"],
+                    "aggregate_delta": float(specialist_reference_holdout["aggregate_delta"]),
+                },
             },
             "benchmark_progress": benchmark_progress,
         }

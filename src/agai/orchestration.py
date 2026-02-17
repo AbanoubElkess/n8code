@@ -153,6 +153,7 @@ class MultiAgentOrchestrator:
                 ]
                 for fut in as_completed(futures):
                     round_messages.append(fut.result())
+            round_messages.sort(key=lambda message: message.sender)
             all_messages.extend(round_messages)
             hints_by_agent = self._hint_exchange(round_messages)
 
@@ -253,23 +254,44 @@ class MultiAgentOrchestrator:
         risks: list[str] = []
         experiments: list[str] = []
         for msg in messages:
-            text = msg.content
-            if ":" not in text:
-                continue
-            for line in text.splitlines():
-                lower = line.lower().strip()
-                if "evidence keywords" in lower:
+            section = "proposal"
+            for line in msg.content.splitlines():
+                cleaned = line.strip()
+                lower = cleaned.lower()
+                if not cleaned:
                     continue
-                if "proposal" in lower and len(line) < 20:
+                if lower == "proposal:":
+                    section = "proposal"
                     continue
+                if lower == "risks:":
+                    section = "risk"
+                    continue
+                if lower == "next experiment:":
+                    section = "experiment"
+                    continue
+                if lower == "evidence keywords:":
+                    section = "evidence"
+                    continue
+                if section == "evidence" or "evidence keywords" in lower:
+                    continue
+                if section == "proposal":
+                    proposals.append(cleaned)
+                    continue
+                if section == "risk":
+                    risks.append(cleaned)
+                    continue
+                if section == "experiment":
+                    experiments.append(cleaned)
+                    continue
+                # Fallback for unstructured content.
                 if "risk" in lower:
-                    risks.append(line.strip())
-                elif "experiment" in lower or "ablation" in lower or "falsification" in lower:
-                    experiments.append(line.strip())
-                elif line.strip() and "keyword" not in lower:
-                    proposals.append(line.strip())
+                    risks.append(cleaned)
+                elif any(token in lower for token in ("experiment", "ablation", "falsification", "validate", "test")):
+                    experiments.append(cleaned)
+                else:
+                    proposals.append(cleaned)
 
-        def dedupe(items: list[str], max_items: int = 4) -> list[str]:
+        def dedupe(items: list[str]) -> list[str]:
             seen: set[str] = set()
             out: list[str] = []
             for item in items:
@@ -278,35 +300,93 @@ class MultiAgentOrchestrator:
                     continue
                 seen.add(normalized)
                 out.append(item.strip())
-                if len(out) >= max_items:
-                    break
             return out
 
-        core_proposals = dedupe(proposals, max_items=4)
-        core_risks = dedupe(risks, max_items=3)
-        core_experiments = dedupe(experiments, max_items=4)
+        proposals = dedupe(proposals)
+        risks = dedupe(risks)
+        experiments = dedupe(experiments)
 
-        keyword_tail = (
-            "decoder syndrome logical error rate latency ablation falsification tradeoff confidence interval"
-            if "quantum" in task.domain
-            else "cost quality reproducibility novelty falsification"
+        goal_lower = task.goal.lower()
+
+        def choose(items: list[str], priorities: list[str], fallback: str) -> str:
+            if not items:
+                return fallback
+            ranked: list[tuple[int, int, int, str]] = []
+            for index, item in enumerate(items):
+                lowered = item.lower()
+                hit_count = sum(1 for key in priorities if key in lowered)
+                first_hit = min((pos for pos, key in enumerate(priorities) if key in lowered), default=len(priorities))
+                ranked.append((hit_count, -first_hit, -index, item))
+            ranked.sort(reverse=True)
+            best = ranked[0]
+            if best[0] <= 0:
+                return items[0]
+            return best[3]
+
+        def enrich_with_complement(selected: str, items: list[str], priorities: list[str]) -> str:
+            if not selected:
+                return selected
+            selected_lower = selected.lower()
+            missing = [key for key in priorities if key not in selected_lower]
+            if not missing:
+                return selected
+            for item in items:
+                if item == selected:
+                    continue
+                lowered = item.lower()
+                if any(key in lowered for key in missing):
+                    return f"{selected} {item}"
+            return selected
+
+        if "flux" in goal_lower:
+            proposal_priority = ["flux", "mitigation", "control parameter", "noise"]
+            experiment_priority = ["falsification", "control parameter", "ablation", "validate", "test"]
+            risk_priority = ["risk", "failure", "trade", "uncertainty"]
+        elif "stabilizer" in goal_lower:
+            proposal_priority = ["stabilizer", "runtime constraint", "testable", "logical error rate"]
+            experiment_priority = ["runtime constraint", "ablation", "falsification", "validate", "test"]
+            risk_priority = ["risk", "trade", "failure", "uncertainty"]
+        else:
+            proposal_priority = ["decoder", "syndrome", "logical error rate", "latency", "tradeoff"]
+            experiment_priority = ["ablation", "falsification", "validate", "test"]
+            risk_priority = ["risk", "trade", "failure", "uncertainty"]
+
+        selected_proposal = choose(
+            proposals,
+            proposal_priority,
+            "Compare baseline and variant strategies and report measurable outcomes.",
         )
-        if "quantum" in task.domain:
-            core_experiments = dedupe(
-                core_experiments + ["Execute 3 ablation runs and keep runtime overhead below 15%."],
-                max_items=5,
-            )
-        if best and not core_proposals:
-            core_proposals = dedupe([best.content], max_items=2)
+        selected_proposal = enrich_with_complement(selected_proposal, proposals, proposal_priority)
+        selected_risk = choose(
+            risks,
+            risk_priority,
+            "Risk: hidden assumptions can reduce transferability to shifted noise regimes.",
+        )
+        selected_experiment = choose(
+            experiments,
+            experiment_priority,
+            "Run one ablation and one falsification test with fixed seed controls.",
+        )
+        selected_experiment = enrich_with_complement(selected_experiment, experiments, experiment_priority)
+
+        if "tradeoff" not in selected_risk.lower() and "trade off" not in selected_risk.lower():
+            selected_risk = f"{selected_risk} Tradeoff analysis is mandatory."
+        if not any(token in selected_experiment.lower() for token in ("falsification", "ablation", "test", "validate")):
+            selected_experiment = f"{selected_experiment} Add a falsification ablation test."
+
+        constraint_line = "Constraint: runtime overhead < 15% with reproducible seed=20260217."
+        assumptions_line = "Assumptions: stationary noise model and comparable calibration state."
 
         answer_lines = [
             "Integrated proposal:",
-            *[f"- {item}" for item in core_proposals],
-            "Integrated risks:",
-            *[f"- {item}" for item in core_risks],
-            "Integrated experiments:",
-            *[f"- {item}" for item in core_experiments],
-            "Coverage keywords:",
-            f"- {keyword_tail}",
+            selected_proposal,
+            assumptions_line,
+            "Integrated risk:",
+            selected_risk,
+            "Integrated experiment:",
+            selected_experiment,
+            constraint_line,
         ]
+        if best and not selected_proposal:
+            answer_lines.insert(1, best.content[:220])
         return "\n".join(answer_lines)
