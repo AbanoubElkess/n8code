@@ -79,6 +79,37 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("summary", eval_report["moonshot_tracking"])
         self.assertFalse(eval_report["moonshot_tracking"]["summary"]["release_gate_enabled"])
         self.assertTrue((self.temp_dir / "moonshot_history.jsonl").exists())
+        ingest_input = self.temp_dir / "external_ingest_payload.json"
+        ingest_input.write_text(
+            '{'
+            '"baseline_id":"external-runtime-ingest",'
+            '"label":"External Runtime Ingest",'
+            '"source_type":"external_reported",'
+            '"source":"runtime-test",'
+            '"source_date":"2026-02-17",'
+            '"verified":true,'
+            '"enabled":true,'
+            '"suite_id":"quantum_hard_suite_v2_adversarial",'
+            '"scoring_protocol":"src/agai/quantum_suite.py:263",'
+            '"evidence":{'
+            '"citation":"runtime-test-citation",'
+            '"retrieval_date":"2026-02-17",'
+            '"verification_method":"runtime-manual",'
+            '"replication_status":"pending"'
+            '},'
+            '"metrics":{"quality":0.9}'
+            '}',
+            encoding="utf-8",
+        )
+        ingest_registry = self.temp_dir / "frontier_baselines.json"
+        ingest_result = runtime.run_ingest_external_baseline(
+            input_path=str(ingest_input),
+            registry_path=str(ingest_registry),
+        )
+        self.assertEqual(ingest_result["status"], "ok")
+        self.assertFalse(ingest_result["verified_effective"])
+        self.assertTrue((self.temp_dir / "baseline_ingest_result.json").exists())
+        self.assertTrue(ingest_registry.exists())
         release_status = runtime.run_release_status()
         self.assertIn("release_ready_internal", release_status)
         self.assertIn("external_claim_ready", release_status)

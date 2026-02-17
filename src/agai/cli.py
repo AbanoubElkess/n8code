@@ -32,6 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("benchmark-status", help="Show benchmark distance trend from history")
     sub.add_parser("moonshot-status", help="Show moonshot tracking trend (non-gating KPI)")
     sub.add_parser("release-status", help="Show release claim scope status from latest evaluation artifact")
+    ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
+    ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
+    ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
     sub.add_parser("scale-path", help="Run scale-path decision framework and scenario analysis")
     return parser
 
@@ -63,6 +66,8 @@ def main() -> None:
         output = MoonshotTracker(history_path=str(Path(args.artifacts_dir) / "moonshot_history.jsonl")).summary()
     elif args.command == "release-status":
         output = runtime.run_release_status()
+    elif args.command == "ingest-external-baseline":
+        output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)
     elif args.command == "scale-path":
         output = runtime.run_scale_path_decision_framework()
     else:

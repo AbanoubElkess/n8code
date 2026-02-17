@@ -8,6 +8,7 @@ from typing import Any
 
 from .adapters import HeuristicSmallModelAdapter, OllamaAdapter
 from .alignment import ReflectionDebateLoop
+from .baseline_ingestion import ExternalBaselineIngestionService
 from .baseline_registry import DeclaredBaselineComparator
 from .benchmark_tracker import BenchmarkTracker
 from .compute_controller import TestTimeComputeController
@@ -247,6 +248,15 @@ class AgenticRuntime:
         payload = self.release_status.evaluate(eval_report)
         payload["input_source"] = source
         out_path = self.artifacts_dir / "release_status.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_ingest_external_baseline(self, input_path: str, registry_path: str | None = None) -> dict[str, Any]:
+        service = ExternalBaselineIngestionService(
+            registry_path=registry_path or "config/frontier_baselines.json"
+        )
+        payload = service.ingest_file(input_path=input_path)
+        out_path = self.artifacts_dir / "baseline_ingest_result.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
