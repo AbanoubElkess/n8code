@@ -16,6 +16,7 @@ from .compute_controller import TestTimeComputeController
 from .direction_tracker import DirectionTracker
 from .distillation import TraceDistiller
 from .evaluation import Evaluator
+from .external_claim_plan import ExternalClaimPlanner
 from .hypothesis import HypothesisExplorer
 from .market import MarketGapAnalyzer
 from .memory import ProvenanceMemory
@@ -60,6 +61,7 @@ class AgenticRuntime:
         self.benchmark_tracker = BenchmarkTracker(history_path=str(self.artifacts_dir / "benchmark_history.jsonl"))
         self.moonshot_tracker = MoonshotTracker(history_path=str(self.artifacts_dir / "moonshot_history.jsonl"))
         self.direction_tracker = DirectionTracker(history_path=str(self.artifacts_dir / "direction_history.jsonl"))
+        self.external_claim_planner = ExternalClaimPlanner()
         self.declared_baseline_comparator = DeclaredBaselineComparator()
         self.tool_engine = ToolReasoningEngine(self.tool_registry)
         self.agents = self._build_agents(use_ollama=use_ollama, ollama_model=ollama_model)
@@ -321,6 +323,10 @@ class AgenticRuntime:
         market_report, market_source = self._load_or_generate_market_report()
         direction_policy = self._load_direction_policy()
         release_status = self.release_status.evaluate(eval_report)
+        external_claim_plan = self.external_claim_planner.plan(
+            eval_report=eval_report,
+            release_status=release_status,
+        )
         benchmark_progress = eval_report.get("benchmark_progress", {})
         benchmark_gaps = benchmark_progress.get("gaps", {})
         claim_calibration = eval_report.get("claim_calibration", {})
@@ -395,6 +401,14 @@ class AgenticRuntime:
             "blockers": {
                 "external_claim_blockers": external_gate.get("blockers", {}),
             },
+            "external_claim_plan": {
+                "estimated_distance_after_recoverable_actions": int(
+                    external_claim_plan.get("estimated_distance_after_recoverable_actions", 0)
+                ),
+                "additional_baselines_needed": int(external_claim_plan.get("additional_baselines_needed", 0)),
+                "readiness_after_plan": bool(external_claim_plan.get("readiness_after_plan", False)),
+                "top_priority_actions": list(external_claim_plan.get("priority_actions", []))[:5],
+            },
             "policy": {
                 "direction_gates": direction_policy,
             },
@@ -409,6 +423,21 @@ class AgenticRuntime:
             "summary": self.direction_tracker.summary(),
         }
         out_path = self.artifacts_dir / "direction_status.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_external_claim_plan(self) -> dict[str, Any]:
+        eval_report, eval_source = self._load_or_run_eval_report()
+        release_status = self.release_status.evaluate(eval_report)
+        payload = self.external_claim_planner.plan(
+            eval_report=eval_report,
+            release_status=release_status,
+        )
+        payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+        }
+        out_path = self.artifacts_dir / "external_claim_plan.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
