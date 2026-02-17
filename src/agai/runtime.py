@@ -405,6 +405,14 @@ class AgenticRuntime:
                 "estimated_distance_after_recoverable_actions": int(
                     external_claim_plan.get("estimated_distance_after_recoverable_actions", 0)
                 ),
+                "estimated_total_distance_after_recoverable_actions": int(
+                    external_claim_plan.get(
+                        "estimated_total_distance_after_recoverable_actions",
+                        external_claim_plan.get("estimated_distance_after_recoverable_actions", 0),
+                    )
+                ),
+                "claim_calibration_distance": int(external_claim_plan.get("claim_calibration_distance", 0)),
+                "claim_calibration_gate_pass": bool(external_claim_plan.get("claim_calibration_gate_pass", True)),
                 "additional_baselines_needed": int(external_claim_plan.get("additional_baselines_needed", 0)),
                 "readiness_after_plan": bool(external_claim_plan.get("readiness_after_plan", False)),
                 "top_priority_actions": list(external_claim_plan.get("priority_actions", []))[:5],

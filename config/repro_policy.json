@@ -3,7 +3,10 @@
   "release_gates": {
     "hard_suite_absolute_win_required": true,
     "moonshot_general_benchmarks_gate": false,
-    "min_comparable_external_baselines_for_external_claim": 2
+    "min_comparable_external_baselines_for_external_claim": 2,
+    "require_claim_calibration_for_external_claim": true,
+    "min_combined_average_reality_score_for_external_claim": 0.9,
+    "max_public_overclaim_rate_for_external_claim": 0.05
   },
   "direction_gates": {
     "min_combined_average_reality_score": 0.9,

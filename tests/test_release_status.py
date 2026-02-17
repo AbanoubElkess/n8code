@@ -26,6 +26,9 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
         min_external: int = 2,
         hard_suite_required: bool = True,
         moonshot_gate_enabled: bool = False,
+        require_claim_calibration: bool = True,
+        min_reality_score: float = 0.90,
+        max_public_overclaim_rate: float = 0.05,
     ) -> Path:
         path = self.temp_dir / "repro_policy.json"
         payload = {
@@ -33,6 +36,9 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
                 "hard_suite_absolute_win_required": hard_suite_required,
                 "moonshot_general_benchmarks_gate": moonshot_gate_enabled,
                 "min_comparable_external_baselines_for_external_claim": min_external,
+                "require_claim_calibration_for_external_claim": require_claim_calibration,
+                "min_combined_average_reality_score_for_external_claim": min_reality_score,
+                "max_public_overclaim_rate_for_external_claim": max_public_overclaim_rate,
             }
         }
         path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
@@ -49,6 +55,10 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
                 },
                 "declared_baseline_comparison": {
                     "summary": {"comparable_baselines": 0}
+                },
+                "claim_calibration": {
+                    "combined_average_reality_score": 0.93,
+                    "public_overclaim_rate": 0.03,
                 },
                 "moonshot_tracking": {
                     "summary": {"best_signal": 0.1}
@@ -99,12 +109,17 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
                         }
                     ]
                 },
+                "claim_calibration": {
+                    "combined_average_reality_score": 0.94,
+                    "public_overclaim_rate": 0.04,
+                },
             }
         )
         self.assertTrue(report["release_ready_internal"])
         self.assertTrue(report["external_claim_ready"])
         self.assertEqual(report["claim_scope"], "internal-and-declared-external-comparative")
         self.assertEqual(report["gates"]["external_claim_gate"]["external_claim_distance"], 0)
+        self.assertTrue(report["gates"]["external_claim_calibration_gate"]["pass"])
 
     def test_external_claim_blockers_and_distance_are_counted(self) -> None:
         policy_path = self._write_policy(min_external=2)
@@ -134,6 +149,10 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
                         },
                     ]
                 },
+                "claim_calibration": {
+                    "combined_average_reality_score": 0.95,
+                    "public_overclaim_rate": 0.02,
+                },
             }
         )
         self.assertFalse(report["external_claim_ready"])
@@ -146,6 +165,66 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
         self.assertEqual(
             report["gates"]["external_claim_gate"]["blockers"]["unspecified-comparability-reason"],
             1,
+        )
+
+    def test_external_claim_not_ready_when_calibration_fails(self) -> None:
+        policy_path = self._write_policy(min_external=1)
+        evaluator = ReleaseStatusEvaluator(policy_path=str(policy_path))
+        report = evaluator.evaluate(
+            {
+                "benchmark_progress": {
+                    "ready": True,
+                    "gaps": {"remaining_distance": 0.0},
+                },
+                "declared_baseline_comparison": {
+                    "comparisons": [
+                        {
+                            "source_type": "external_reported",
+                            "comparability": {"comparable": True},
+                        }
+                    ]
+                },
+                "claim_calibration": {
+                    "combined_average_reality_score": 0.86,
+                    "public_overclaim_rate": 0.12,
+                },
+            }
+        )
+        self.assertTrue(report["release_ready_internal"])
+        self.assertFalse(report["external_claim_ready"])
+        self.assertEqual(report["claim_scope"], "internal-comparative-only")
+        self.assertFalse(report["gates"]["external_claim_calibration_gate"]["pass"])
+        self.assertGreater(report["gates"]["external_claim_calibration_gate"]["reality_score_gap"], 0.0)
+        self.assertGreater(report["gates"]["external_claim_calibration_gate"]["public_overclaim_rate_gap"], 0.0)
+
+    def test_external_claim_not_ready_when_calibration_metrics_missing(self) -> None:
+        policy_path = self._write_policy(min_external=1, require_claim_calibration=True)
+        evaluator = ReleaseStatusEvaluator(policy_path=str(policy_path))
+        report = evaluator.evaluate(
+            {
+                "benchmark_progress": {
+                    "ready": True,
+                    "gaps": {"remaining_distance": 0.0},
+                },
+                "declared_baseline_comparison": {
+                    "comparisons": [
+                        {
+                            "source_type": "external_reported",
+                            "comparability": {"comparable": True},
+                        }
+                    ]
+                },
+            }
+        )
+        self.assertFalse(report["external_claim_ready"])
+        self.assertFalse(report["gates"]["external_claim_calibration_gate"]["pass"])
+        self.assertIn(
+            "combined_average_reality_score",
+            report["gates"]["external_claim_calibration_gate"]["missing_metrics"],
+        )
+        self.assertIn(
+            "public_overclaim_rate",
+            report["gates"]["external_claim_calibration_gate"]["missing_metrics"],
         )
 
 

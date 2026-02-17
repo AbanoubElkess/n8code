@@ -29,6 +29,23 @@ class ExternalClaimPlanner:
         blocker_counts = external_gate.get("blockers", {})
         if not isinstance(blocker_counts, dict):
             blocker_counts = {}
+        calibration_gate = release_status.get("gates", {}).get("external_claim_calibration_gate", {})
+        if not isinstance(calibration_gate, dict):
+            calibration_gate = {}
+        calibration_required = bool(calibration_gate.get("required", False))
+        calibration_pass = bool(calibration_gate.get("pass", not calibration_required))
+        calibration_missing_metrics = calibration_gate.get("missing_metrics", [])
+        if not isinstance(calibration_missing_metrics, list):
+            calibration_missing_metrics = []
+        reality_score_gap = self._safe_float(
+            calibration_gate.get("reality_score_gap", external_gate.get("reality_score_gap", 0.0))
+        )
+        public_overclaim_rate_gap = self._safe_float(
+            calibration_gate.get(
+                "public_overclaim_rate_gap",
+                external_gate.get("public_overclaim_rate_gap", 0.0),
+            )
+        )
 
         non_comparable_external_rows = [
             row
@@ -67,8 +84,52 @@ class ExternalClaimPlanner:
                     ),
                 }
             )
+        if calibration_required and not calibration_pass:
+            if calibration_missing_metrics:
+                priority_actions.append(
+                    {
+                        "priority": 1,
+                        "action_type": "populate_claim_calibration_metrics",
+                        "description": (
+                            "Claim calibration metrics are missing. Run evaluation and ensure required fields are "
+                            "materialized in claim_calibration."
+                        ),
+                        "missing_metrics": sorted(str(metric) for metric in calibration_missing_metrics),
+                        "command_hint": "quantum-eval",
+                    }
+                )
+            if reality_score_gap > 1e-9:
+                priority_actions.append(
+                    {
+                        "priority": 2,
+                        "action_type": "raise_combined_reality_score",
+                        "description": (
+                            "Increase combined_average_reality_score via stricter calibration language and "
+                            "falsification-first review."
+                        ),
+                        "reality_score_gap": reality_score_gap,
+                        "command_hint": "direction-status",
+                    }
+                )
+            if public_overclaim_rate_gap > 1e-9:
+                priority_actions.append(
+                    {
+                        "priority": 2,
+                        "action_type": "reduce_public_overclaim_rate",
+                        "description": (
+                            "Reduce public_overclaim_rate to policy threshold by tightening claims and "
+                            "counterexample checks."
+                        ),
+                        "public_overclaim_rate_gap": public_overclaim_rate_gap,
+                        "command_hint": "direction-status",
+                    }
+                )
 
-        readiness_after_plan = additional_baselines_needed == 0
+        calibration_distance = 0 if (not calibration_required or calibration_pass) else 1
+        estimated_total_distance_after_recoverable_actions = (
+            estimated_distance_after_recoverable_actions + calibration_distance
+        )
+        readiness_after_plan = estimated_total_distance_after_recoverable_actions == 0
         return {
             "status": "ok",
             "suite_id": suite_id,
@@ -81,6 +142,15 @@ class ExternalClaimPlanner:
             "non_comparable_external_rows": len(non_comparable_external_rows),
             "recoverable_external_rows": recoverable_rows,
             "estimated_distance_after_recoverable_actions": estimated_distance_after_recoverable_actions,
+            "claim_calibration_distance": calibration_distance,
+            "estimated_total_distance_after_recoverable_actions": estimated_total_distance_after_recoverable_actions,
+            "claim_calibration_gate_pass": calibration_pass,
+            "claim_calibration_required": calibration_required,
+            "claim_calibration_gaps": {
+                "reality_score_gap": reality_score_gap,
+                "public_overclaim_rate_gap": public_overclaim_rate_gap,
+                "missing_metrics": sorted(str(metric) for metric in calibration_missing_metrics),
+            },
             "additional_baselines_needed": additional_baselines_needed,
             "row_plans": row_plans,
             "priority_actions": priority_actions,
@@ -231,3 +301,9 @@ class ExternalClaimPlanner:
                 )
         staged.sort(key=lambda pair: (pair[0], pair[1]["baseline_id"], pair[1]["action_type"]))
         return [item for _, item in staged]
+
+    def _safe_float(self, value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
