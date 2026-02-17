@@ -2,7 +2,8 @@
   "policy_version": "1.0.0",
   "release_gates": {
     "hard_suite_absolute_win_required": true,
-    "moonshot_general_benchmarks_gate": false
+    "moonshot_general_benchmarks_gate": false,
+    "min_comparable_external_baselines_for_external_claim": 2
   },
   "seed_control": {
     "enabled": true,

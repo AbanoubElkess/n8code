@@ -13,6 +13,7 @@ class ReleaseStatusEvaluator:
         default_policy: dict[str, Any] = {
             "hard_suite_absolute_win_required": True,
             "moonshot_general_benchmarks_gate": False,
+            "min_comparable_external_baselines_for_external_claim": 1,
         }
         if not self.policy_path.exists():
             return default_policy
@@ -26,6 +27,9 @@ class ReleaseStatusEvaluator:
                 "moonshot_general_benchmarks_gate": bool(
                     release_gates.get("moonshot_general_benchmarks_gate", False)
                 ),
+                "min_comparable_external_baselines_for_external_claim": int(
+                    release_gates.get("min_comparable_external_baselines_for_external_claim", 1)
+                ),
             }
         except Exception:  # noqa: BLE001
             return default_policy
@@ -38,7 +42,11 @@ class ReleaseStatusEvaluator:
         remaining_distance = float(gaps.get("remaining_distance", 0.0))
 
         comparable_external = self._count_comparable_external(eval_report)
-        external_claim_ready = comparable_external > 0
+        required_external = max(1, int(policy["min_comparable_external_baselines_for_external_claim"]))
+        external_claim_distance = max(0, required_external - comparable_external)
+        external_claim_ready = comparable_external >= required_external
+        external_blockers = self._external_blockers(eval_report)
+        non_comparable_external = self._count_non_comparable_external(eval_report)
 
         moonshot_summary = eval_report.get("moonshot_tracking", {}).get("summary", {})
         moonshot_gate_enabled = bool(policy["moonshot_general_benchmarks_gate"])
@@ -79,6 +87,7 @@ class ReleaseStatusEvaluator:
             "policy": {
                 "hard_suite_absolute_win_required": bool(policy["hard_suite_absolute_win_required"]),
                 "moonshot_general_benchmarks_gate": moonshot_gate_enabled,
+                "min_comparable_external_baselines_for_external_claim": required_external,
             },
             "gates": {
                 "hard_suite_gate": {
@@ -94,11 +103,15 @@ class ReleaseStatusEvaluator:
                 "external_claim_gate": {
                     "pass": external_claim_ready,
                     "reason": (
-                        "at least one comparable external declared baseline available"
+                        "external comparable baseline threshold reached"
                         if external_claim_ready
-                        else "no comparable external declared baselines available"
+                        else "external comparable baseline threshold not reached"
                     ),
                     "comparable_external_baselines": comparable_external,
+                    "required_external_baselines": required_external,
+                    "external_claim_distance": external_claim_distance,
+                    "non_comparable_external_baselines": non_comparable_external,
+                    "blockers": external_blockers,
                 },
             },
             "disclaimer": (
@@ -120,5 +133,44 @@ class ReleaseStatusEvaluator:
             source_type = str(row.get("source_type", "")).lower()
             comparable = bool(row.get("comparability", {}).get("comparable", False))
             if comparable and source_type.startswith("external"):
+                count += 1
+        return count
+
+    def _external_blockers(self, eval_report: dict[str, Any]) -> dict[str, int]:
+        comparison = eval_report.get("declared_baseline_comparison", {})
+        rows = comparison.get("comparisons", [])
+        counts: dict[str, int] = {}
+        if not isinstance(rows, list):
+            return counts
+        for row in rows:
+            source_type = str(row.get("source_type", "")).lower()
+            if not source_type.startswith("external"):
+                continue
+            comparability = row.get("comparability", {})
+            comparable = bool(comparability.get("comparable", False))
+            if comparable:
+                continue
+            reasons = comparability.get("reasons", [])
+            if not isinstance(reasons, list) or not reasons:
+                key = "unspecified-comparability-reason"
+                counts[key] = counts.get(key, 0) + 1
+                continue
+            for reason in reasons:
+                key = str(reason)
+                counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    def _count_non_comparable_external(self, eval_report: dict[str, Any]) -> int:
+        comparison = eval_report.get("declared_baseline_comparison", {})
+        rows = comparison.get("comparisons", [])
+        if not isinstance(rows, list):
+            return 0
+        count = 0
+        for row in rows:
+            source_type = str(row.get("source_type", "")).lower()
+            if not source_type.startswith("external"):
+                continue
+            comparable = bool(row.get("comparability", {}).get("comparable", False))
+            if not comparable:
                 count += 1
         return count
