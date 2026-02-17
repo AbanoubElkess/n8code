@@ -216,6 +216,8 @@ class TestRuntimeExternalClaimCampaignDraft(unittest.TestCase):
         )
         self.assertEqual(payload["status"], "ok")
         self.assertIn("campaign_config", payload)
+        self.assertIn("plan_summary", payload)
+        self.assertIn("distance_progress", payload["plan_summary"])
         self.assertIn("campaign_output_path", payload)
         self.assertTrue(Path(payload["campaign_output_path"]).exists())
         self.assertTrue((self.temp_dir / "external_claim_campaign_draft.json").exists())

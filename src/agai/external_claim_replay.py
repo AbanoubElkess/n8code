@@ -151,6 +151,7 @@ class ExternalClaimReplayRunner:
                 ),
                 "additional_baselines_needed": int(plan_before.get("additional_baselines_needed", 0)),
                 "claim_calibration_distance": int(plan_before.get("claim_calibration_distance", 0)),
+                "distance_progress": self._distance_progress_summary(plan_before),
             },
             "after_external_claim_plan": {
                 "estimated_distance_after_recoverable_actions": int(
@@ -161,11 +162,30 @@ class ExternalClaimReplayRunner:
                 ),
                 "additional_baselines_needed": int(plan_after.get("additional_baselines_needed", 0)),
                 "claim_calibration_distance": int(plan_after.get("claim_calibration_distance", 0)),
+                "distance_progress": self._distance_progress_summary(plan_after),
             },
             "disclaimer": (
                 "Replay automation only executes attestation for rows without manual metadata/harness blockers. "
                 "All other blockers remain manual work."
             ),
+        }
+
+    def _distance_progress_summary(self, plan: Any) -> dict[str, Any]:
+        payload = plan if isinstance(plan, dict) else {}
+        progress = payload.get("distance_progress", {})
+        if not isinstance(progress, dict):
+            progress = {}
+        return {
+            "max_total_distance": int(progress.get("max_total_distance", 0)),
+            "current_total_distance": int(progress.get("current_total_distance", 0)),
+            "projected_total_distance_after_recoverable_actions": int(
+                progress.get("projected_total_distance_after_recoverable_actions", 0)
+            ),
+            "recoverable_distance_reduction": int(progress.get("recoverable_distance_reduction", 0)),
+            "current_progress_ratio": float(progress.get("current_progress_ratio", 0.0)),
+            "projected_progress_ratio": float(progress.get("projected_progress_ratio", 0.0)),
+            "current_remaining_ratio": float(progress.get("current_remaining_ratio", 1.0)),
+            "projected_remaining_ratio": float(progress.get("projected_remaining_ratio", 1.0)),
         }
 
     def _select_attestation_candidates(

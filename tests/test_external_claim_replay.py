@@ -113,6 +113,8 @@ class TestExternalClaimReplayRunner(unittest.TestCase):
         self.assertEqual(payload["replay_summary"]["passed_rows"], 1)
         self.assertEqual(payload["replay_summary"]["failed_rows"], 0)
         self.assertEqual(payload["replay_summary"]["skipped_manual_rows"], 0)
+        self.assertIn("distance_progress", payload["before_external_claim_plan"])
+        self.assertIn("distance_progress", payload["after_external_claim_plan"])
 
     def test_replay_dry_run_does_not_mutate_distance(self) -> None:
         self._write_policy()
@@ -140,6 +142,8 @@ class TestExternalClaimReplayRunner(unittest.TestCase):
         self.assertEqual(payload["replay_summary"]["passed_rows"], 0)
         self.assertEqual(payload["replay_summary"]["failed_rows"], 0)
         self.assertEqual(payload["replay_summary"]["skipped_manual_rows"], 0)
+        self.assertIn("distance_progress", payload["before_external_claim_plan"])
+        self.assertIn("distance_progress", payload["after_external_claim_plan"])
 
 
 if __name__ == "__main__":

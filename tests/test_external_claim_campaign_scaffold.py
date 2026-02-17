@@ -206,6 +206,8 @@ class TestRuntimeExternalClaimCampaignScaffold(unittest.TestCase):
             output_dir=str(self.temp_dir / "campaign_scaffold"),
         )
         self.assertEqual(scaffold["status"], "ok")
+        self.assertIn("plan_summary", scaffold)
+        self.assertIn("distance_progress", scaffold["plan_summary"])
         self.assertTrue(Path(scaffold["patch_map_path"]).exists())
         self.assertTrue(Path(scaffold["ingest_manifest_path"]).exists())
         self.assertTrue((self.temp_dir / "external_claim_campaign_scaffold.json").exists())
@@ -218,6 +220,8 @@ class TestRuntimeExternalClaimCampaignScaffold(unittest.TestCase):
             ingest_manifest_path=str(scaffold["ingest_manifest_path"]),
         )
         self.assertEqual(draft["status"], "blocked")
+        self.assertIn("plan_summary", draft)
+        self.assertIn("distance_progress", draft["plan_summary"])
         self.assertEqual(draft["summary"]["baseline_runs_ready"], 0)
         self.assertEqual(draft["summary"]["unresolved_dependencies"], 1)
         self.assertIn("unresolved empty/null fields", draft["unresolved_dependencies"][0]["reason"])

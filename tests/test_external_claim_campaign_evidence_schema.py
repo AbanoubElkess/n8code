@@ -165,6 +165,8 @@ class TestRuntimeExternalClaimCampaignEvidenceSchema(unittest.TestCase):
             output_path=str(output_path),
         )
         self.assertEqual(payload["status"], "ok")
+        self.assertIn("plan_summary", payload)
+        self.assertIn("distance_progress", payload["plan_summary"])
         self.assertIn("scaffold", payload)
         self.assertIn("schema", payload)
         self.assertTrue(output_path.exists())

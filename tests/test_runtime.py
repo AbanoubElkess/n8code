@@ -176,6 +176,7 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("estimated_total_distance_after_recoverable_actions", direction_status["external_claim_plan"])
         self.assertIn("claim_calibration_distance", direction_status["external_claim_plan"])
         self.assertIn("claim_calibration_gate_pass", direction_status["external_claim_plan"])
+        self.assertIn("distance_progress", direction_status["external_claim_plan"])
         self.assertIn("top_priority_actions", direction_status["external_claim_plan"])
         self.assertIn("next_priority", direction_status)
         self.assertTrue((self.temp_dir / "direction_status.json").exists())
@@ -183,6 +184,7 @@ class TestRuntime(unittest.TestCase):
         claim_plan = runtime.run_external_claim_plan()
         self.assertIn("external_claim_distance", claim_plan)
         self.assertIn("additional_baselines_needed", claim_plan)
+        self.assertIn("distance_progress", claim_plan)
         self.assertIn("priority_actions", claim_plan)
         self.assertIn("sources", claim_plan)
         self.assertTrue((self.temp_dir / "external_claim_plan.json").exists())
@@ -199,6 +201,8 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("delta", claim_replay)
         self.assertIn("replay_summary", claim_replay)
         self.assertIn("skipped_manual_rows", claim_replay)
+        self.assertIn("distance_progress", claim_replay["before_external_claim_plan"])
+        self.assertIn("distance_progress", claim_replay["after_external_claim_plan"])
         self.assertTrue((self.temp_dir / "external_claim_replay.json").exists())
         normalize_input = self.temp_dir / "baseline_normalize_patch.json"
         normalize_input.write_text(

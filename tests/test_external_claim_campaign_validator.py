@@ -248,6 +248,8 @@ class TestRuntimeExternalClaimCampaignValidate(unittest.TestCase):
             ingest_manifest_path=str(scaffold["ingest_manifest_path"]),
         )
         self.assertEqual(payload["status"], "error")
+        self.assertIn("plan_summary", payload)
+        self.assertIn("distance_progress", payload["plan_summary"])
         self.assertGreater(payload["summary"]["issues"], 0)
         self.assertTrue((self.temp_dir / "external_claim_campaign_validate.json").exists())
 

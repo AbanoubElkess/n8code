@@ -130,6 +130,24 @@ class ExternalClaimPlanner:
             estimated_distance_after_recoverable_actions + calibration_distance
         )
         readiness_after_plan = estimated_total_distance_after_recoverable_actions == 0
+        current_total_distance = external_distance + calibration_distance
+        max_total_distance = required_external + (1 if calibration_required else 0)
+        current_progress_ratio = self._closed_ratio(
+            distance=current_total_distance,
+            max_distance=max_total_distance,
+        )
+        projected_progress_ratio = self._closed_ratio(
+            distance=estimated_total_distance_after_recoverable_actions,
+            max_distance=max_total_distance,
+        )
+        current_remaining_ratio = self._remaining_ratio(
+            distance=current_total_distance,
+            max_distance=max_total_distance,
+        )
+        projected_remaining_ratio = self._remaining_ratio(
+            distance=estimated_total_distance_after_recoverable_actions,
+            max_distance=max_total_distance,
+        )
         return {
             "status": "ok",
             "suite_id": suite_id,
@@ -150,6 +168,19 @@ class ExternalClaimPlanner:
                 "reality_score_gap": reality_score_gap,
                 "public_overclaim_rate_gap": public_overclaim_rate_gap,
                 "missing_metrics": sorted(str(metric) for metric in calibration_missing_metrics),
+            },
+            "distance_progress": {
+                "max_total_distance": max_total_distance,
+                "current_total_distance": current_total_distance,
+                "projected_total_distance_after_recoverable_actions": estimated_total_distance_after_recoverable_actions,
+                "recoverable_distance_reduction": max(
+                    0,
+                    current_total_distance - estimated_total_distance_after_recoverable_actions,
+                ),
+                "current_progress_ratio": current_progress_ratio,
+                "projected_progress_ratio": projected_progress_ratio,
+                "current_remaining_ratio": current_remaining_ratio,
+                "projected_remaining_ratio": projected_remaining_ratio,
             },
             "additional_baselines_needed": additional_baselines_needed,
             "row_plans": row_plans,
@@ -334,3 +365,15 @@ class ExternalClaimPlanner:
             return float(value)
         except (TypeError, ValueError):
             return default
+
+    def _closed_ratio(self, *, distance: int, max_distance: int) -> float:
+        if max_distance <= 0:
+            return 1.0 if distance <= 0 else 0.0
+        clamped = min(max(distance, 0), max_distance)
+        return max(0.0, min(1.0, float(max_distance - clamped) / float(max_distance)))
+
+    def _remaining_ratio(self, *, distance: int, max_distance: int) -> float:
+        if max_distance <= 0:
+            return 0.0 if distance <= 0 else 1.0
+        clamped = min(max(distance, 0), max_distance)
+        return max(0.0, min(1.0, float(clamped) / float(max_distance)))

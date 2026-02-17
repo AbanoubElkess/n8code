@@ -213,6 +213,8 @@ class TestRuntimeExternalClaimCampaignAutofill(unittest.TestCase):
             autofill_output_dir=str(self.temp_dir / "campaign_autofill"),
         )
         self.assertEqual(payload["status"], "blocked")
+        self.assertIn("plan_summary", payload)
+        self.assertIn("distance_progress", payload["plan_summary"])
         self.assertEqual(payload["readiness"]["status"], "blocked")
         self.assertEqual(payload["readiness"]["input_validation"]["status"], "error")
         self.assertTrue((self.temp_dir / "external_claim_campaign_autofill.json").exists())
@@ -289,6 +291,8 @@ class TestRuntimeExternalClaimCampaignAutofill(unittest.TestCase):
             autofill_output_dir=str(self.temp_dir / "campaign_autofill"),
         )
         self.assertEqual(payload["status"], "ready-for-execute")
+        self.assertIn("plan_summary", payload)
+        self.assertIn("distance_progress", payload["plan_summary"])
         self.assertEqual(payload["autofill"]["status"], "ok")
         self.assertEqual(payload["readiness"]["status"], "ready-for-execute")
         self.assertEqual(payload["readiness"]["input_validation"]["status"], "ok")

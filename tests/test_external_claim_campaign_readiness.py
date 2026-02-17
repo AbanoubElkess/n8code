@@ -201,6 +201,8 @@ class TestRuntimeExternalClaimCampaignReadiness(unittest.TestCase):
             ingest_manifest_path=str(scaffold["ingest_manifest_path"]),
         )
         self.assertEqual(payload["status"], "blocked")
+        self.assertIn("plan_summary", payload)
+        self.assertIn("distance_progress", payload["plan_summary"])
         self.assertFalse(payload["ready_for_preview"])
         self.assertFalse(payload["ready_for_execute"])
         self.assertEqual(payload["preview"]["status"], "not-executed")
@@ -290,6 +292,8 @@ class TestRuntimeExternalClaimCampaignReadiness(unittest.TestCase):
             ingest_manifest_path=str(ingest_manifest_path),
         )
         self.assertEqual(payload["status"], "ready-for-execute")
+        self.assertIn("plan_summary", payload)
+        self.assertIn("distance_progress", payload["plan_summary"])
         self.assertTrue(payload["ready_for_preview"])
         self.assertTrue(payload["ready_for_execute"])
         self.assertEqual(payload["input_validation"]["status"], "ok")

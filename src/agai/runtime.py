@@ -231,6 +231,30 @@ class AgenticRuntime:
         except Exception:  # noqa: BLE001
             return default_policy
 
+    def _claim_plan_summary(self, claim_plan: Any) -> dict[str, Any]:
+        plan = claim_plan if isinstance(claim_plan, dict) else {}
+        distance_progress = plan.get("distance_progress", {})
+        progress = distance_progress if isinstance(distance_progress, dict) else {}
+        return {
+            "external_claim_distance": int(plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(plan.get("additional_baselines_needed", 0)),
+            "distance_progress": {
+                "max_total_distance": int(progress.get("max_total_distance", 0)),
+                "current_total_distance": int(progress.get("current_total_distance", 0)),
+                "projected_total_distance_after_recoverable_actions": int(
+                    progress.get("projected_total_distance_after_recoverable_actions", 0)
+                ),
+                "recoverable_distance_reduction": int(progress.get("recoverable_distance_reduction", 0)),
+                "current_progress_ratio": float(progress.get("current_progress_ratio", 0.0)),
+                "projected_progress_ratio": float(progress.get("projected_progress_ratio", 0.0)),
+                "current_remaining_ratio": float(progress.get("current_remaining_ratio", 1.0)),
+                "projected_remaining_ratio": float(progress.get("projected_remaining_ratio", 1.0)),
+            },
+        }
+
     def run_quantum_research_demo(self, question: str) -> dict[str, Any]:
         task = TaskSpec(
             goal=question,
@@ -428,18 +452,12 @@ class AgenticRuntime:
                 "external_claim_blockers": external_gate.get("blockers", {}),
             },
             "external_claim_plan": {
+                **self._claim_plan_summary(external_claim_plan),
                 "estimated_distance_after_recoverable_actions": int(
                     external_claim_plan.get("estimated_distance_after_recoverable_actions", 0)
                 ),
-                "estimated_total_distance_after_recoverable_actions": int(
-                    external_claim_plan.get(
-                        "estimated_total_distance_after_recoverable_actions",
-                        external_claim_plan.get("estimated_distance_after_recoverable_actions", 0),
-                    )
-                ),
                 "claim_calibration_distance": int(external_claim_plan.get("claim_calibration_distance", 0)),
                 "claim_calibration_gate_pass": bool(external_claim_plan.get("claim_calibration_gate_pass", True)),
-                "additional_baselines_needed": int(external_claim_plan.get("additional_baselines_needed", 0)),
                 "readiness_after_plan": bool(external_claim_plan.get("readiness_after_plan", False)),
                 "top_priority_actions": list(external_claim_plan.get("priority_actions", []))[:5],
             },
@@ -524,13 +542,7 @@ class AgenticRuntime:
             "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
             "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
         }
-        payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        payload["plan_summary"] = self._claim_plan_summary(claim_plan)
         campaign_output = Path(output_path) if output_path else (self.artifacts_dir / "generated_external_campaign_config.json")
         campaign_output.parent.mkdir(parents=True, exist_ok=True)
         campaign_config = payload.get("campaign_config", {})
@@ -589,13 +601,7 @@ class AgenticRuntime:
             "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
             "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
         }
-        validator_payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        validator_payload["plan_summary"] = self._claim_plan_summary(claim_plan)
 
         draft_payload = self.external_claim_campaign_draft.build(
             claim_plan=claim_plan,
@@ -609,13 +615,7 @@ class AgenticRuntime:
             "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
             "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
         }
-        draft_payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        draft_payload["plan_summary"] = self._claim_plan_summary(claim_plan)
         campaign_output = Path(output_path) if output_path else (self.artifacts_dir / "generated_external_campaign_config.json")
         campaign_output.parent.mkdir(parents=True, exist_ok=True)
         draft_campaign_config = draft_payload.get("campaign_config", {})
@@ -672,13 +672,7 @@ class AgenticRuntime:
             "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
             "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
         }
-        payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        payload["plan_summary"] = self._claim_plan_summary(claim_plan)
         out_path = self.artifacts_dir / "external_claim_campaign_readiness.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
@@ -732,13 +726,7 @@ class AgenticRuntime:
             "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
             "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
         }
-        payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        payload["plan_summary"] = self._claim_plan_summary(claim_plan)
         out_path = self.artifacts_dir / "external_claim_campaign_validate.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
@@ -790,13 +778,7 @@ class AgenticRuntime:
             "release_status": "computed-in-process",
             "evidence_map": str(Path(evidence_map_path)) if evidence_map_path else "none",
         }
-        scaffold_payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        scaffold_payload["plan_summary"] = self._claim_plan_summary(claim_plan)
 
         autofill_dir = (
             Path(autofill_output_dir)
@@ -815,13 +797,7 @@ class AgenticRuntime:
             "evidence_map": str(Path(evidence_map_path)) if evidence_map_path else "none",
             "scaffold_output_dir": str(scaffold_dir),
         }
-        autofill_payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        autofill_payload["plan_summary"] = self._claim_plan_summary(claim_plan)
 
         patch_map_path = str(autofill_payload.get("patch_map_path", "")).strip()
         ingest_manifest_path = str(autofill_payload.get("ingest_manifest_path", "")).strip()
@@ -850,13 +826,7 @@ class AgenticRuntime:
                 "release_status": "computed-in-process",
                 "evidence_map": str(Path(evidence_map_path)) if evidence_map_path else "none",
             },
-            "plan_summary": {
-                "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-                "estimated_total_distance_after_recoverable_actions": int(
-                    claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-                ),
-                "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-            },
+            "plan_summary": self._claim_plan_summary(claim_plan),
             "scaffold": scaffold_payload,
             "autofill": autofill_payload,
             "readiness": readiness_payload,
@@ -905,13 +875,7 @@ class AgenticRuntime:
             "eval": eval_source,
             "release_status": "computed-in-process",
         }
-        scaffold_payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        scaffold_payload["plan_summary"] = self._claim_plan_summary(claim_plan)
 
         schema_output = (
             Path(output_path)
@@ -929,26 +893,14 @@ class AgenticRuntime:
             "release_status": "computed-in-process",
             "scaffold_output_dir": str(scaffold_dir),
         }
-        schema_payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        schema_payload["plan_summary"] = self._claim_plan_summary(claim_plan)
         payload = {
             "status": str(schema_payload.get("status", "error")),
             "sources": {
                 "eval": eval_source,
                 "release_status": "computed-in-process",
             },
-            "plan_summary": {
-                "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-                "estimated_total_distance_after_recoverable_actions": int(
-                    claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-                ),
-                "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-            },
+            "plan_summary": self._claim_plan_summary(claim_plan),
             "scaffold": scaffold_payload,
             "schema": schema_payload,
             "disclaimer": (
@@ -995,13 +947,7 @@ class AgenticRuntime:
             "eval": eval_source,
             "release_status": "computed-in-process",
         }
-        payload["plan_summary"] = {
-            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
-            "estimated_total_distance_after_recoverable_actions": int(
-                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
-            ),
-            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
-        }
+        payload["plan_summary"] = self._claim_plan_summary(claim_plan)
         out_path = self.artifacts_dir / "external_claim_campaign_scaffold.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload

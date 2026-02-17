@@ -52,6 +52,15 @@ class TestExternalClaimPlanner(unittest.TestCase):
         self.assertEqual(plan["estimated_distance_after_recoverable_actions"], 1)
         self.assertEqual(plan["claim_calibration_distance"], 0)
         self.assertEqual(plan["additional_baselines_needed"], 1)
+        progress = plan["distance_progress"]
+        self.assertEqual(progress["max_total_distance"], 2)
+        self.assertEqual(progress["current_total_distance"], 2)
+        self.assertEqual(progress["projected_total_distance_after_recoverable_actions"], 1)
+        self.assertEqual(progress["recoverable_distance_reduction"], 1)
+        self.assertAlmostEqual(progress["current_progress_ratio"], 0.0)
+        self.assertAlmostEqual(progress["projected_progress_ratio"], 0.5)
+        self.assertAlmostEqual(progress["current_remaining_ratio"], 1.0)
+        self.assertAlmostEqual(progress["projected_remaining_ratio"], 0.5)
         action_types = [row["action_type"] for row in plan["priority_actions"]]
         self.assertIn("refresh_evidence_payload", action_types)
         self.assertIn("attest_baseline", action_types)
@@ -86,6 +95,12 @@ class TestExternalClaimPlanner(unittest.TestCase):
         self.assertEqual(plan["additional_baselines_needed"], 0)
         self.assertTrue(plan["readiness_after_plan"])
         self.assertEqual(plan["estimated_total_distance_after_recoverable_actions"], 0)
+        progress = plan["distance_progress"]
+        self.assertEqual(progress["max_total_distance"], 1)
+        self.assertEqual(progress["current_total_distance"], 0)
+        self.assertEqual(progress["recoverable_distance_reduction"], 0)
+        self.assertAlmostEqual(progress["current_progress_ratio"], 1.0)
+        self.assertAlmostEqual(progress["current_remaining_ratio"], 0.0)
 
     def test_plan_includes_metadata_normalization_actions(self) -> None:
         planner = ExternalClaimPlanner()
@@ -160,6 +175,12 @@ class TestExternalClaimPlanner(unittest.TestCase):
         self.assertEqual(plan["claim_calibration_distance"], 1)
         self.assertEqual(plan["estimated_total_distance_after_recoverable_actions"], 1)
         self.assertFalse(plan["readiness_after_plan"])
+        progress = plan["distance_progress"]
+        self.assertEqual(progress["max_total_distance"], 2)
+        self.assertEqual(progress["current_total_distance"], 1)
+        self.assertEqual(progress["projected_total_distance_after_recoverable_actions"], 1)
+        self.assertAlmostEqual(progress["current_progress_ratio"], 0.5)
+        self.assertAlmostEqual(progress["projected_progress_ratio"], 0.5)
         action_types = [row["action_type"] for row in plan["priority_actions"]]
         self.assertIn("raise_combined_reality_score", action_types)
         self.assertIn("reduce_public_overclaim_rate", action_types)
