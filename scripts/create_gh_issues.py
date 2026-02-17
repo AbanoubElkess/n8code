@@ -40,6 +40,22 @@ def ensure_labels(gh: str, labels: set[str]) -> None:
         run([gh, "label", "create", label, "--color", color, "--description", description, "--force"])
 
 
+def existing_issue_titles(gh: str, limit: int = 200) -> set[str]:
+    rc, output = run([gh, "issue", "list", "--state", "all", "--limit", str(limit), "--json", "title"])
+    if rc != 0:
+        return set()
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        return set()
+    titles: set[str] = set()
+    for item in data:
+        title = item.get("title")
+        if isinstance(title, str):
+            titles.add(title)
+    return titles
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     plan_path = root / "config" / "phases.json"
@@ -76,10 +92,16 @@ def main() -> int:
     for issue in issues:
         all_labels.update(issue.get("labels", []))
     ensure_labels(gh=gh, labels=all_labels)
+    existing_titles = existing_issue_titles(gh=gh)
 
     created = 0
+    skipped = 0
     for issue in issues:
         title = f"[{issue['jira_id']}][{issue['phase']}] {issue['title']}"
+        if title in existing_titles:
+            skipped += 1
+            print(f"Skipped existing issue: {title}")
+            continue
         cmd = [gh, "issue", "create", "--title", title, "--body", issue["body"]]
         for label in issue.get("labels", []):
             cmd.extend(["--label", label])
@@ -87,12 +109,13 @@ def main() -> int:
         if rc == 0:
             created += 1
             print(out)
+            existing_titles.add(title)
         else:
             print(f"Failed to create issue: {title}")
             print(out)
 
-    print(f"Created {created}/{len(issues)} issues.")
-    return 0 if created == len(issues) else 1
+    print(f"Created {created}/{len(issues)} issues. Skipped {skipped}.")
+    return 0
 
 
 if __name__ == "__main__":
