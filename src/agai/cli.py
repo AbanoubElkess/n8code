@@ -31,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("validate-architecture", help="Validate implementation against architecture reference")
     sub.add_parser("benchmark-status", help="Show benchmark distance trend from history")
     sub.add_parser("moonshot-status", help="Show moonshot tracking trend (non-gating KPI)")
+    sub.add_parser("release-status", help="Show release claim scope status from latest evaluation artifact")
     sub.add_parser("scale-path", help="Run scale-path decision framework and scenario analysis")
     return parser
 
@@ -60,6 +61,8 @@ def main() -> None:
         output = BenchmarkTracker(history_path=str(Path(args.artifacts_dir) / "benchmark_history.jsonl")).summary()
     elif args.command == "moonshot-status":
         output = MoonshotTracker(history_path=str(Path(args.artifacts_dir) / "moonshot_history.jsonl")).summary()
+    elif args.command == "release-status":
+        output = runtime.run_release_status()
     elif args.command == "scale-path":
         output = runtime.run_scale_path_decision_framework()
     else:

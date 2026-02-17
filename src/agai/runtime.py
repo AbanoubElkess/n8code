@@ -19,6 +19,7 @@ from .memory import ProvenanceMemory
 from .moonshot_tracker import MoonshotTracker
 from .orchestration import AgentRuntime, MultiAgentOrchestrator
 from .qec_tools import QECSimulatorHook
+from .release_status import ReleaseStatusEvaluator
 from .scale_path import ScalePathDecisionEngine
 from .research_guidance import ResearchGuidanceEngine
 from .tool_registry import MCPToolRegistry, ToolSpec
@@ -44,6 +45,7 @@ class AgenticRuntime:
         self._register_default_tools()
         self.market = MarketGapAnalyzer()
         self.scale_path = ScalePathDecisionEngine()
+        self.release_status = ReleaseStatusEvaluator()
         self.explorer = HypothesisExplorer()
         self.guidance = ResearchGuidanceEngine(self.explorer)
         self.compute = TestTimeComputeController()
@@ -233,6 +235,20 @@ class AgenticRuntime:
         out_path = self.artifacts_dir / "quantum_hard_suite_eval.json"
         out_path.write_text(json.dumps(eval_report, indent=2, ensure_ascii=True), encoding="utf-8")
         return eval_report
+
+    def run_release_status(self) -> dict[str, Any]:
+        eval_path = self.artifacts_dir / "quantum_hard_suite_eval.json"
+        source = "cached-artifact"
+        if eval_path.exists():
+            eval_report = json.loads(eval_path.read_text(encoding="utf-8"))
+        else:
+            source = "fresh-evaluation"
+            eval_report = self.run_quantum_hard_suite()
+        payload = self.release_status.evaluate(eval_report)
+        payload["input_source"] = source
+        out_path = self.artifacts_dir / "release_status.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
 
     def run_trace_distillation(self) -> dict[str, Any]:
         distilled = self.distiller.distill(
