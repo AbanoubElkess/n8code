@@ -46,6 +46,16 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("--max-metric-delta", type=float, default=0.02, help="Maximum allowed absolute metric delta")
     replay.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
     replay.add_argument("--dry-run", action="store_true", help="Preview replay candidates without mutating registry")
+    normalize = sub.add_parser(
+        "normalize-external-baseline",
+        help="Apply explicit metadata patch to an external baseline and optionally align harness ids to eval",
+    )
+    normalize.add_argument("--baseline-id", required=True, help="Baseline ID in registry")
+    normalize.add_argument("--input", required=True, help="Path to normalization patch json")
+    normalize.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
+    normalize.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    normalize.add_argument("--align-to-eval", action="store_true", help="Align suite_id/scoring_protocol to eval artifact")
+    normalize.add_argument("--replace-metrics", action="store_true", help="Replace baseline metrics with patch.metrics")
     ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
     ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
     ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
@@ -95,6 +105,15 @@ def main() -> None:
             max_metric_delta=float(args.max_metric_delta),
             eval_path=str(args.eval_path or "") or None,
             dry_run=bool(args.dry_run),
+        )
+    elif args.command == "normalize-external-baseline":
+        output = runtime.run_normalize_external_baseline(
+            baseline_id=str(args.baseline_id),
+            input_path=str(args.input),
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            align_to_eval=bool(args.align_to_eval),
+            replace_metrics=bool(args.replace_metrics),
         )
     elif args.command == "ingest-external-baseline":
         output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)

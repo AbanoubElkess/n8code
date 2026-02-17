@@ -200,6 +200,27 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("replay_summary", claim_replay)
         self.assertIn("skipped_manual_rows", claim_replay)
         self.assertTrue((self.temp_dir / "external_claim_replay.json").exists())
+        normalize_input = self.temp_dir / "baseline_normalize_patch.json"
+        normalize_input.write_text(
+            '{'
+            '"notes":"normalized during runtime test",'
+            '"evidence":{"verification_method":"runtime-normalized-check"}'
+            '}',
+            encoding="utf-8",
+        )
+        normalize_result = runtime.run_normalize_external_baseline(
+            baseline_id="external-runtime-ingest",
+            input_path=str(normalize_input),
+            registry_path=str(ingest_registry),
+            eval_path=str(self.temp_dir / "quantum_hard_suite_eval.json"),
+            align_to_eval=True,
+            replace_metrics=False,
+        )
+        self.assertEqual(normalize_result["status"], "ok")
+        self.assertTrue(normalize_result["normalize_applied"])
+        self.assertIn("changed_fields", normalize_result)
+        self.assertIn("sources", normalize_result)
+        self.assertTrue((self.temp_dir / "baseline_normalize_result.json").exists())
 
         distilled = runtime.run_trace_distillation()
         self.assertIn("policies", distilled)

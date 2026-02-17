@@ -10,6 +10,7 @@ from .adapters import HeuristicSmallModelAdapter, OllamaAdapter
 from .alignment import ReflectionDebateLoop
 from .baseline_attestation import ExternalBaselineAttestationService
 from .baseline_ingestion import ExternalBaselineIngestionService
+from .baseline_normalization import ExternalBaselineNormalizationService
 from .baseline_registry import DeclaredBaselineComparator
 from .benchmark_tracker import BenchmarkTracker
 from .compute_controller import TestTimeComputeController
@@ -495,6 +496,84 @@ class AgenticRuntime:
         )
         payload = service.ingest_file(input_path=input_path)
         out_path = self.artifacts_dir / "baseline_ingest_result.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_normalize_external_baseline(
+        self,
+        baseline_id: str,
+        input_path: str,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        align_to_eval: bool = False,
+        replace_metrics: bool = False,
+    ) -> dict[str, Any]:
+        patch_path = Path(input_path)
+        if not patch_path.exists():
+            return {
+                "status": "error",
+                "reason": f"input file not found: {patch_path}",
+                "baseline_id": baseline_id,
+            }
+        try:
+            patch = json.loads(patch_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return {
+                "status": "error",
+                "reason": f"invalid json: {exc}",
+                "baseline_id": baseline_id,
+            }
+
+        eval_report: dict[str, Any] | None = None
+        eval_source = "none"
+        if align_to_eval or eval_path:
+            if eval_path:
+                path = Path(eval_path)
+                if not path.exists():
+                    return {
+                        "status": "error",
+                        "reason": f"eval artifact not found: {path}",
+                        "baseline_id": baseline_id,
+                    }
+                eval_report = json.loads(path.read_text(encoding="utf-8"))
+                eval_source = "explicit-eval-artifact"
+            else:
+                eval_report, eval_source = self._load_or_run_eval_report()
+
+        active_registry = registry_path or "config/frontier_baselines.json"
+        normalizer = ExternalBaselineNormalizationService(registry_path=active_registry)
+        payload = normalizer.normalize_payload(
+            baseline_id=baseline_id,
+            patch=patch if isinstance(patch, dict) else {},
+            eval_report=eval_report,
+            align_to_eval=align_to_eval,
+            replace_metrics=replace_metrics,
+        )
+
+        if eval_report and payload.get("status") == "ok":
+            comparator = DeclaredBaselineComparator(registry_path=active_registry)
+            eval_report["declared_baseline_comparison"] = comparator.compare(eval_report)
+            release_status = self.release_status.evaluate(eval_report)
+            claim_plan = self.external_claim_planner.plan(
+                eval_report=eval_report,
+                release_status=release_status,
+                registry_path=active_registry,
+            )
+            external_gate = release_status.get("gates", {}).get("external_claim_gate", {})
+            payload["post_normalization"] = {
+                "external_claim_distance": int(external_gate.get("external_claim_distance", 0)),
+                "comparable_external_baselines": int(external_gate.get("comparable_external_baselines", 0)),
+                "required_external_baselines": int(external_gate.get("required_external_baselines", 0)),
+                "external_claim_ready": bool(release_status.get("external_claim_ready", False)),
+                "estimated_total_distance_after_recoverable_actions": int(
+                    claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+                ),
+                "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+            }
+        payload["sources"] = {
+            "eval": eval_source,
+        }
+        out_path = self.artifacts_dir / "baseline_normalize_result.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 
