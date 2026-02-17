@@ -158,6 +158,76 @@ class TestExternalBaselineAttestationService(unittest.TestCase):
         self.assertFalse(result["attestation_passed"])
         self.assertTrue(any("only allowed for external baselines" in reason for reason in result["reasons"]))
 
+    def test_attestation_rejects_placeholder_metadata(self) -> None:
+        baseline = {
+            "baseline_id": "external-placeholder",
+            "label": "External Placeholder",
+            "source_type": "external_reported",
+            "source": "pending-normalization",
+            "source_date": "unknown",
+            "verified": False,
+            "enabled": True,
+            "suite_id": "quantum_hard_suite_v2_adversarial",
+            "scoring_protocol": "src/agai/quantum_suite.py:263",
+            "evidence": {
+                "citation": "unknown source",
+                "artifact_hash": "sha256:test",
+                "retrieval_date": "2026-02-17",
+                "verification_method": "pending review",
+                "replication_status": "pending",
+            },
+            "metrics": {
+                "quality": 0.9148,
+                "aggregate_delta": 0.4851,
+            },
+            "notes": "",
+        }
+        self._write_registry(baseline)
+        result = self.service.attest_from_eval_report(
+            baseline_id="external-placeholder",
+            eval_report=self._eval_report(),
+            max_metric_delta=0.02,
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "rejected")
+        self.assertFalse(result["attestation_passed"])
+        self.assertTrue(any("source metadata appears placeholder or unknown" in reason for reason in result["reasons"]))
+        self.assertTrue(any("source_date must be ISO-8601" in reason for reason in result["reasons"]))
+
+    def test_attestation_requires_minimum_overlap_metrics(self) -> None:
+        baseline = {
+            "baseline_id": "external-one-metric",
+            "label": "External One Metric",
+            "source_type": "external_reported",
+            "source": "trusted-source",
+            "source_date": "2026-02-17",
+            "verified": False,
+            "enabled": True,
+            "suite_id": "quantum_hard_suite_v2_adversarial",
+            "scoring_protocol": "src/agai/quantum_suite.py:263",
+            "evidence": {
+                "citation": "trusted citation",
+                "artifact_hash": "sha256:test",
+                "retrieval_date": "2026-02-17",
+                "verification_method": "manual extraction",
+                "replication_status": "pending",
+            },
+            "metrics": {
+                "quality": 0.9148,
+            },
+            "notes": "",
+        }
+        self._write_registry(baseline)
+        result = self.service.attest_from_eval_report(
+            baseline_id="external-one-metric",
+            eval_report=self._eval_report(),
+            max_metric_delta=0.02,
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "rejected")
+        self.assertFalse(result["attestation_passed"])
+        self.assertTrue(any("insufficient overlapping metrics" in reason for reason in result["reasons"]))
+
 
 if __name__ == "__main__":
     unittest.main()

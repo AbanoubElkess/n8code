@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -105,6 +106,7 @@ class ExternalBaselineIngestionService:
 
     def _validate_payload(self, payload: Any) -> list[str]:
         errors: list[str] = []
+        placeholder_tokens = ["unknown", "pending", "placeholder", "tbd"]
         if not isinstance(payload, dict):
             return ["payload must be a json object"]
 
@@ -126,6 +128,11 @@ class ExternalBaselineIngestionService:
         source_type = str(payload.get("source_type", "")).lower()
         if source_type and not source_type.startswith("external"):
             errors.append("source_type must start with 'external' for external ingestion")
+        if self._contains_placeholder_token(str(payload.get("source", "")), placeholder_tokens):
+            errors.append("source must not be placeholder or unknown")
+        source_date = str(payload.get("source_date", ""))
+        if not self._is_iso_date(source_date):
+            errors.append("source_date must be ISO-8601 date (YYYY-MM-DD)")
 
         evidence = payload.get("evidence", {})
         if not isinstance(evidence, dict):
@@ -135,6 +142,15 @@ class ExternalBaselineIngestionService:
             for field in evidence_fields:
                 if not str(evidence.get(field, "")).strip():
                     errors.append(f"evidence.{field} is required")
+            citation = str(evidence.get("citation", ""))
+            verification_method = str(evidence.get("verification_method", ""))
+            retrieval_date = str(evidence.get("retrieval_date", ""))
+            if citation and self._contains_placeholder_token(citation, placeholder_tokens):
+                errors.append("evidence.citation must not contain placeholder terms")
+            if verification_method and self._contains_placeholder_token(verification_method, placeholder_tokens):
+                errors.append("evidence.verification_method must not contain placeholder terms")
+            if retrieval_date and not self._is_iso_date(retrieval_date):
+                errors.append("evidence.retrieval_date must be ISO-8601 date (YYYY-MM-DD)")
 
         metrics = payload.get("metrics", {})
         if not isinstance(metrics, dict):
@@ -146,6 +162,25 @@ class ExternalBaselineIngestionService:
                 except (TypeError, ValueError):
                     errors.append(f"metrics.{key} must be numeric")
         return errors
+
+    def _contains_placeholder_token(self, value: str, tokens: list[str]) -> bool:
+        normalized = value.strip().lower()
+        if not normalized:
+            return True
+        for token in tokens:
+            if token and token in normalized:
+                return True
+        return False
+
+    def _is_iso_date(self, value: str) -> bool:
+        payload = value.strip()
+        if not payload:
+            return False
+        try:
+            datetime.fromisoformat(payload)
+            return len(payload) == 10
+        except ValueError:
+            return False
 
     def _normalize_payload(self, payload: dict[str, Any], input_hash: str, warnings: list[str]) -> dict[str, Any]:
         evidence = dict(payload.get("evidence", {}))

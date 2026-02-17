@@ -85,6 +85,43 @@ class TestExternalClaimPlanner(unittest.TestCase):
         self.assertEqual(plan["additional_baselines_needed"], 0)
         self.assertTrue(plan["readiness_after_plan"])
 
+    def test_plan_includes_metadata_normalization_actions(self) -> None:
+        planner = ExternalClaimPlanner()
+        eval_report = {
+            "benchmark_progress": {"suite_id": "quantum_hard_suite_v2_adversarial"},
+            "benchmark_provenance": {"scoring_reference": "src/agai/quantum_suite.py:263"},
+            "declared_baseline_comparison": {
+                "comparisons": [
+                    {
+                        "baseline_id": "external-meta",
+                        "source_type": "external_reported",
+                        "comparability": {
+                            "comparable": False,
+                            "reasons": [
+                                "source metadata appears placeholder or unknown",
+                                "source_date must be ISO-8601 date (YYYY-MM-DD)",
+                                "retrieval_date must be ISO-8601 date (YYYY-MM-DD)",
+                            ],
+                        },
+                    }
+                ]
+            },
+        }
+        release_status = {
+            "gates": {
+                "external_claim_gate": {
+                    "required_external_baselines": 1,
+                    "comparable_external_baselines": 0,
+                    "external_claim_distance": 1,
+                    "blockers": {},
+                }
+            }
+        }
+        plan = planner.plan(eval_report=eval_report, release_status=release_status)
+        action_types = [row["action_type"] for row in plan["priority_actions"]]
+        self.assertIn("replace_placeholder_metadata", action_types)
+        self.assertIn("normalize_metadata_dates", action_types)
+
 
 if __name__ == "__main__":
     unittest.main()

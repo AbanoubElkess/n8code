@@ -10,6 +10,15 @@
     "max_market_high_risk_opportunities": 0,
     "max_market_medium_risk_opportunities": 2
   },
+  "attestation_gates": {
+    "min_overlap_metrics": 2,
+    "disallowed_placeholder_tokens": [
+      "unknown",
+      "pending",
+      "placeholder",
+      "tbd"
+    ]
+  },
   "seed_control": {
     "enabled": true,
     "default_seed": 20260217

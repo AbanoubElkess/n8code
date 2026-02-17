@@ -102,7 +102,7 @@ class TestRuntime(unittest.TestCase):
             '"verification_method":"runtime-manual",'
             '"replication_status":"pending"'
             '},'
-            '"metrics":{"quality":0.9}'
+            '"metrics":{"quality":0.9,"aggregate_delta":0.48}'
             '}',
             encoding="utf-8",
         )

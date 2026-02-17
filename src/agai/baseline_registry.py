@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 from pathlib import Path
 from statistics import mean
@@ -110,6 +111,8 @@ class DeclaredBaselineComparator:
             evidence=evidence,
             source_type=source_type,
             verified=verified,
+            source=str(baseline.get("source", "")),
+            source_date=str(baseline.get("source_date", "")),
         )
 
         if not enabled:
@@ -191,13 +194,21 @@ class DeclaredBaselineComparator:
             "notes": str(baseline.get("notes", "")),
         }
 
-    def _evaluate_evidence(self, evidence: Any, source_type: str, verified: bool) -> dict[str, Any]:
+    def _evaluate_evidence(
+        self,
+        evidence: Any,
+        source_type: str,
+        verified: bool,
+        source: str,
+        source_date: str,
+    ) -> dict[str, Any]:
         required_fields = [
             "citation",
             "artifact_hash",
             "retrieval_date",
             "verification_method",
         ]
+        placeholder_tokens = ["unknown", "pending", "placeholder", "tbd"]
         reasons: list[str] = []
         evidence_valid = True
         evidence_payload: dict[str, Any] = evidence if isinstance(evidence, dict) else {}
@@ -209,6 +220,25 @@ class DeclaredBaselineComparator:
         replication_status = str(evidence_payload.get("replication_status", "unspecified"))
         source_key = source_type.lower()
         external_source = source_key.startswith("external")
+        citation = str(evidence_payload.get("citation", ""))
+        verification_method = str(evidence_payload.get("verification_method", ""))
+        retrieval_date = str(evidence_payload.get("retrieval_date", ""))
+        if external_source:
+            if self._contains_placeholder_token(source, placeholder_tokens):
+                evidence_valid = False
+                reasons.append("source metadata appears placeholder or unknown")
+            if not self._is_iso_date(source_date):
+                evidence_valid = False
+                reasons.append("source_date must be ISO-8601 date (YYYY-MM-DD)")
+            if citation and self._contains_placeholder_token(citation, placeholder_tokens):
+                evidence_valid = False
+                reasons.append("citation appears placeholder or unknown")
+            if verification_method and self._contains_placeholder_token(verification_method, placeholder_tokens):
+                evidence_valid = False
+                reasons.append("verification_method appears placeholder or unknown")
+            if retrieval_date and not self._is_iso_date(retrieval_date):
+                evidence_valid = False
+                reasons.append("retrieval_date must be ISO-8601 date (YYYY-MM-DD)")
         if verified and external_source and replication_status != "replicated-internal-harness":
             evidence_valid = False
             reasons.append("external baseline missing replicated-internal-harness status")
@@ -220,3 +250,22 @@ class DeclaredBaselineComparator:
             "replication_status": replication_status,
             "reasons": reasons,
         }
+
+    def _contains_placeholder_token(self, value: str, tokens: list[str]) -> bool:
+        normalized = value.strip().lower()
+        if not normalized:
+            return True
+        for token in tokens:
+            if token and token in normalized:
+                return True
+        return False
+
+    def _is_iso_date(self, value: str) -> bool:
+        payload = value.strip()
+        if not payload:
+            return False
+        try:
+            datetime.fromisoformat(payload)
+            return len(payload) == 10
+        except ValueError:
+            return False

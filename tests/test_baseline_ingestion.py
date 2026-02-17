@@ -138,6 +138,30 @@ class TestExternalBaselineIngestionService(unittest.TestCase):
         self.assertEqual(stored["baselines"][0]["label"], "New")
         self.assertTrue(stored["baselines"][0]["verified"])
 
+    def test_ingest_rejects_placeholder_source_metadata(self) -> None:
+        payload = {
+            "baseline_id": "external-invalid-source",
+            "label": "External Invalid Source",
+            "source_type": "external_reported",
+            "source": "pending-normalization",
+            "source_date": "unknown",
+            "verified": False,
+            "enabled": True,
+            "suite_id": "quantum_hard_suite_v2_adversarial",
+            "scoring_protocol": "src/agai/quantum_suite.py:263",
+            "evidence": {
+                "citation": "unknown citation",
+                "retrieval_date": "2026-02-17",
+                "verification_method": "manual extraction",
+            },
+            "metrics": {"quality": 0.9},
+        }
+        self.input_path.write_text(json.dumps(payload), encoding="utf-8")
+        result = self.service.ingest_file(str(self.input_path))
+        self.assertEqual(result["status"], "error")
+        self.assertIn("source must not be placeholder or unknown", result["errors"])
+        self.assertIn("source_date must be ISO-8601 date (YYYY-MM-DD)", result["errors"])
+
 
 if __name__ == "__main__":
     unittest.main()

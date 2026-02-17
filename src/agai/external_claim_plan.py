@@ -106,13 +106,23 @@ class ExternalClaimPlanner:
             reasons = []
         reason_set = {str(reason) for reason in reasons}
         missing_evidence = any("missing verification evidence fields" in reason for reason in reason_set)
+        placeholder_metadata = (
+            "source metadata appears placeholder or unknown" in reason_set
+            or "citation appears placeholder or unknown" in reason_set
+            or "verification_method appears placeholder or unknown" in reason_set
+        )
+        invalid_dates = (
+            "source_date must be ISO-8601 date (YYYY-MM-DD)" in reason_set
+            or "retrieval_date must be ISO-8601 date (YYYY-MM-DD)" in reason_set
+        )
         suite_mismatch = "suite mismatch" in reason_set
         scoring_mismatch = "scoring protocol mismatch" in reason_set
         missing_metrics = "missing metric payload" in reason_set or "no overlapping metrics" in reason_set
+        insufficient_overlap = any(reason.startswith("insufficient overlapping metrics") for reason in reason_set)
         unverified = "baseline unverified" in reason_set
 
         actions: list[dict[str, Any]] = []
-        if missing_evidence or unverified:
+        if missing_evidence or unverified or placeholder_metadata or invalid_dates:
             actions.append(
                 {
                     "priority": 1,
@@ -124,6 +134,24 @@ class ExternalClaimPlanner:
                         "ingest-external-baseline --input <updated_payload.json> "
                         f"--registry-path {registry_path}"
                     ),
+                }
+            )
+        if placeholder_metadata:
+            actions.append(
+                {
+                    "priority": 1,
+                    "action_type": "replace_placeholder_metadata",
+                    "description": (
+                        "Replace placeholder source/citation/verification metadata with concrete traceable values."
+                    ),
+                }
+            )
+        if invalid_dates:
+            actions.append(
+                {
+                    "priority": 1,
+                    "action_type": "normalize_metadata_dates",
+                    "description": "Set source_date and evidence retrieval_date to ISO-8601 date format (YYYY-MM-DD).",
                 }
             )
         if suite_mismatch or scoring_mismatch:
@@ -144,6 +172,16 @@ class ExternalClaimPlanner:
                     "description": (
                         "Add overlapping metrics (for example quality, aggregate_delta, holdout/adversarial "
                         "quality, overclaim rate) so comparability can be computed."
+                    ),
+                }
+            )
+        if insufficient_overlap:
+            actions.append(
+                {
+                    "priority": 2,
+                    "action_type": "increase_metric_overlap",
+                    "description": (
+                        "Provide additional overlapping metrics so attestation meets minimum overlap requirements."
                     ),
                 }
             )

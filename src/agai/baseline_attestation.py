@@ -7,8 +7,34 @@ from typing import Any
 
 
 class ExternalBaselineAttestationService:
-    def __init__(self, registry_path: str = "config/frontier_baselines.json") -> None:
+    def __init__(
+        self,
+        registry_path: str = "config/frontier_baselines.json",
+        policy_path: str = "config/repro_policy.json",
+    ) -> None:
         self.registry_path = Path(registry_path)
+        self.policy_path = Path(policy_path)
+
+    def _load_policy(self) -> dict[str, Any]:
+        default_policy: dict[str, Any] = {
+            "min_overlap_metrics": 2,
+            "disallowed_placeholder_tokens": ["unknown", "pending", "placeholder", "tbd"],
+        }
+        if not self.policy_path.exists():
+            return default_policy
+        try:
+            payload = json.loads(self.policy_path.read_text(encoding="utf-8"))
+            gates = payload.get("attestation_gates", {})
+            tokens = gates.get("disallowed_placeholder_tokens", default_policy["disallowed_placeholder_tokens"])
+            token_list = [str(token).strip().lower() for token in tokens if str(token).strip()]
+            if not token_list:
+                token_list = list(default_policy["disallowed_placeholder_tokens"])
+            return {
+                "min_overlap_metrics": max(1, int(gates.get("min_overlap_metrics", default_policy["min_overlap_metrics"]))),
+                "disallowed_placeholder_tokens": token_list,
+            }
+        except Exception:  # noqa: BLE001
+            return default_policy
 
     def attest_from_eval_report(
         self,
@@ -16,6 +42,9 @@ class ExternalBaselineAttestationService:
         eval_report: dict[str, Any],
         max_metric_delta: float = 0.02,
     ) -> dict[str, Any]:
+        policy = self._load_policy()
+        min_overlap_metrics = int(policy["min_overlap_metrics"])
+        placeholder_tokens = list(policy["disallowed_placeholder_tokens"])
         registry = self._load_registry()
         baselines = registry.get("baselines", [])
         if not isinstance(baselines, list):
@@ -38,6 +67,14 @@ class ExternalBaselineAttestationService:
         if not source_type.startswith("external"):
             pass_flag = False
             reasons.append("attestation is only allowed for external baselines")
+        source = str(baseline.get("source", ""))
+        source_date = str(baseline.get("source_date", ""))
+        if self._contains_placeholder_token(source, placeholder_tokens):
+            pass_flag = False
+            reasons.append("source metadata appears placeholder or unknown")
+        if not self._is_iso_date(source_date):
+            pass_flag = False
+            reasons.append("source_date must be ISO-8601 date (YYYY-MM-DD)")
 
         progress = eval_report.get("benchmark_progress", {})
         observed = progress.get("observed", {})
@@ -65,6 +102,18 @@ class ExternalBaselineAttestationService:
         if missing_evidence_fields:
             pass_flag = False
             reasons.append(f"missing evidence fields: {missing_evidence_fields}")
+        citation = str(evidence.get("citation", ""))
+        verification_method = str(evidence.get("verification_method", ""))
+        retrieval_date = str(evidence.get("retrieval_date", ""))
+        if citation and self._contains_placeholder_token(citation, placeholder_tokens):
+            pass_flag = False
+            reasons.append("citation appears placeholder or unknown")
+        if verification_method and self._contains_placeholder_token(verification_method, placeholder_tokens):
+            pass_flag = False
+            reasons.append("verification_method appears placeholder or unknown")
+        if retrieval_date and not self._is_iso_date(retrieval_date):
+            pass_flag = False
+            reasons.append("retrieval_date must be ISO-8601 date (YYYY-MM-DD)")
 
         baseline_metrics = baseline.get("metrics", {})
         if not isinstance(baseline_metrics, dict) or not baseline_metrics:
@@ -80,6 +129,9 @@ class ExternalBaselineAttestationService:
         if not overlap:
             pass_flag = False
             reasons.append("no overlapping metrics between baseline and eval report")
+        elif len(overlap) < min_overlap_metrics:
+            pass_flag = False
+            reasons.append(f"insufficient overlapping metrics: {len(overlap)} < {min_overlap_metrics}")
 
         for metric in overlap:
             ours = float(observed[metric])
@@ -105,6 +157,7 @@ class ExternalBaselineAttestationService:
             "suite_id": observed_suite,
             "scoring_protocol": observed_scoring,
             "max_metric_delta": round(max_metric_delta, 6),
+            "min_overlap_metrics": min_overlap_metrics,
             "metrics_checked": overlap,
             "pass": pass_flag,
             "reasons": reasons,
@@ -124,10 +177,30 @@ class ExternalBaselineAttestationService:
             "verified_effective": verified_effective,
             "replication_status": replication_status,
             "max_metric_delta": round(max_metric_delta, 6),
+            "min_overlap_metrics": min_overlap_metrics,
             "metric_report": metric_report,
             "reasons": reasons,
             "registry_path": str(self.registry_path),
         }
+
+    def _contains_placeholder_token(self, value: str, tokens: list[str]) -> bool:
+        normalized = value.strip().lower()
+        if not normalized:
+            return True
+        for token in tokens:
+            if token and token in normalized:
+                return True
+        return False
+
+    def _is_iso_date(self, value: str) -> bool:
+        payload = value.strip()
+        if not payload:
+            return False
+        try:
+            datetime.fromisoformat(payload)
+            return len(payload) == 10
+        except ValueError:
+            return False
 
     def _load_registry(self) -> dict[str, Any]:
         default_payload: dict[str, Any] = {"registry_version": "unspecified", "baselines": []}
