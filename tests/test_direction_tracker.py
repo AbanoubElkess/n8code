@@ -72,6 +72,9 @@ class TestDirectionTracker(unittest.TestCase):
         self.assertGreater(summary["total_distance_trend"], 0.0)
         self.assertGreater(summary["reality_score_trend"], 0.0)
         self.assertGreater(summary["total_progress_ratio_trend"], 0.0)
+        self.assertEqual(summary["projection_delivery_samples"], 1)
+        self.assertAlmostEqual(summary["latest_projection_distance_shortfall"], 0.0)
+        self.assertAlmostEqual(summary["latest_projection_progress_delivery_ratio"], 1.0)
 
 
 if __name__ == "__main__":

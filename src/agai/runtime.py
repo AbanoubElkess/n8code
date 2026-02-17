@@ -201,6 +201,8 @@ class AgenticRuntime:
             "min_combined_average_reality_score": 0.90,
             "max_market_high_risk_opportunities": 0,
             "max_market_medium_risk_opportunities": 2,
+            "max_projection_distance_shortfall": 0.0,
+            "min_projection_progress_delivery_ratio": 0.5,
         }
         policy_path = Path("config/repro_policy.json")
         if not policy_path.exists():
@@ -225,6 +227,18 @@ class AgenticRuntime:
                     gates.get(
                         "max_market_medium_risk_opportunities",
                         default_policy["max_market_medium_risk_opportunities"],
+                    )
+                ),
+                "max_projection_distance_shortfall": float(
+                    gates.get(
+                        "max_projection_distance_shortfall",
+                        default_policy["max_projection_distance_shortfall"],
+                    )
+                ),
+                "min_projection_progress_delivery_ratio": float(
+                    gates.get(
+                        "min_projection_progress_delivery_ratio",
+                        default_policy["min_projection_progress_delivery_ratio"],
                     )
                 ),
             }
@@ -414,6 +428,8 @@ class AgenticRuntime:
         min_combined_reality = float(direction_policy["min_combined_average_reality_score"])
         max_high_risk = int(direction_policy["max_market_high_risk_opportunities"])
         max_medium_risk = int(direction_policy["max_market_medium_risk_opportunities"])
+        max_projection_distance_shortfall = float(direction_policy["max_projection_distance_shortfall"])
+        min_projection_progress_delivery_ratio = float(direction_policy["min_projection_progress_delivery_ratio"])
         naming_reality_gate_pass = (
             combined_average_reality_score >= min_combined_reality
             and market_high_risk <= max_high_risk
@@ -498,9 +514,57 @@ class AgenticRuntime:
             ),
         }
         tracking_snapshot = self.direction_tracker.record(payload)
+        tracking_summary = self.direction_tracker.summary()
+        projection_delivery_samples = int(tracking_summary.get("projection_delivery_samples", 0))
+        latest_projection_distance_shortfall = float(
+            tracking_summary.get("latest_projection_distance_shortfall", 0.0)
+        )
+        latest_projection_progress_delivery_ratio = float(
+            tracking_summary.get("latest_projection_progress_delivery_ratio", 1.0)
+        )
+        projection_gate_evaluated = projection_delivery_samples > 0
+        projection_reality_gate_pass = (
+            not projection_gate_evaluated
+            or (
+                latest_projection_distance_shortfall <= (max_projection_distance_shortfall + 1e-9)
+                and latest_projection_progress_delivery_ratio >= (min_projection_progress_delivery_ratio - 1e-9)
+            )
+        )
+        payload["gates"]["projection_realism_gate"] = {
+            "pass": projection_reality_gate_pass,
+            "evaluated": projection_gate_evaluated,
+            "reason": (
+                "projection delivery gate skipped (insufficient history)"
+                if not projection_gate_evaluated
+                else (
+                    "projection delivery thresholds satisfied"
+                    if projection_reality_gate_pass
+                    else "projection delivery thresholds not satisfied"
+                )
+            ),
+            "projection_delivery_samples": projection_delivery_samples,
+            "latest_projection_distance_shortfall": latest_projection_distance_shortfall,
+            "max_projection_distance_shortfall": max_projection_distance_shortfall,
+            "latest_projection_progress_delivery_ratio": latest_projection_progress_delivery_ratio,
+            "min_projection_progress_delivery_ratio": min_projection_progress_delivery_ratio,
+            "mean_projection_distance_shortfall": float(
+                tracking_summary.get("mean_projection_distance_shortfall", 0.0)
+            ),
+            "mean_projection_progress_delivery_ratio": float(
+                tracking_summary.get("mean_projection_progress_delivery_ratio", 1.0)
+            ),
+        }
+        if (
+            internal_remaining_distance <= 1e-9
+            and naming_reality_gate_pass
+            and not projection_reality_gate_pass
+        ):
+            payload["next_priority"] = (
+                "close projection-delivery gap or lower projected claims before broadening claim language"
+            )
         payload["tracking"] = {
             "snapshot": tracking_snapshot,
-            "summary": self.direction_tracker.summary(),
+            "summary": tracking_summary,
         }
         out_path = self.artifacts_dir / "direction_status.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")

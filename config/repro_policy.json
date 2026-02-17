@@ -11,7 +11,9 @@
   "direction_gates": {
     "min_combined_average_reality_score": 0.9,
     "max_market_high_risk_opportunities": 0,
-    "max_market_medium_risk_opportunities": 2
+    "max_market_medium_risk_opportunities": 2,
+    "max_projection_distance_shortfall": 0.0,
+    "min_projection_progress_delivery_ratio": 0.5
   },
   "attestation_gates": {
     "min_overlap_metrics": 2,
