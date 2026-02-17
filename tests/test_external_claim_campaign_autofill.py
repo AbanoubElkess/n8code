@@ -124,6 +124,57 @@ class TestExternalClaimCampaignAutofillService(unittest.TestCase):
         self.assertEqual(filled_payload["suite_id"], "quantum_hard_suite_v2_adversarial")
         self.assertEqual(filled_payload["scoring_protocol"], "src/agai/quantum_suite.py:263")
 
+    def test_autofill_generates_inline_ingest_payload_when_requested(self) -> None:
+        evidence_map = {
+            "defaults": {
+                "align_to_eval": True,
+                "replace_metrics": True,
+                "max_metric_delta": 0.02,
+            },
+            "baselines": {
+                "external-a": {
+                    "source": "arxiv:2501.12948",
+                    "source_date": "2026-02-17",
+                    "evidence": {
+                        "citation": "arxiv:2501.12948",
+                        "retrieval_date": "2026-02-17",
+                        "verification_method": "manual extraction",
+                    },
+                    "metrics": {
+                        "quality": 0.90,
+                        "aggregate_delta": 0.48,
+                    },
+                    "generate_ingest_payload": True,
+                    "ingest_payload": {
+                        "baseline_id": "external-extra",
+                        "label": "External Extra",
+                        "verified": True,
+                        "evidence": {
+                            "replication_status": "replicated-internal-harness",
+                        },
+                    },
+                }
+            },
+        }
+        payload = self.service.build(
+            scaffold_payload=self.scaffold_payload,
+            evidence_map=evidence_map,
+            eval_report=self.eval_report,
+            output_dir=str(self.temp_dir / "autofill"),
+        )
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["summary"]["ingest_payload_paths"], 1)
+        self.assertEqual(payload["summary"]["generated_ingest_payloads"], 1)
+        ingest_manifest = json.loads(Path(payload["ingest_manifest_path"]).read_text(encoding="utf-8"))
+        self.assertEqual(len(ingest_manifest), 1)
+        ingest_payload_path = Path(ingest_manifest[0])
+        self.assertTrue(ingest_payload_path.exists())
+        ingest_payload = json.loads(ingest_payload_path.read_text(encoding="utf-8"))
+        self.assertEqual(ingest_payload["baseline_id"], "external-extra")
+        self.assertEqual(ingest_payload["suite_id"], "quantum_hard_suite_v2_adversarial")
+        self.assertEqual(ingest_payload["scoring_protocol"], "src/agai/quantum_suite.py:263")
+        self.assertEqual(ingest_payload["evidence"]["replication_status"], "replicated-internal-harness")
+
 
 class TestRuntimeExternalClaimCampaignAutofill(unittest.TestCase):
     def setUp(self) -> None:
@@ -297,6 +348,68 @@ class TestRuntimeExternalClaimCampaignAutofill(unittest.TestCase):
         self.assertEqual(payload["readiness"]["status"], "ready-for-execute")
         self.assertEqual(payload["readiness"]["input_validation"]["status"], "ok")
         self.assertTrue((self.temp_dir / "external_claim_campaign_autofill.json").exists())
+
+    def test_runtime_autofill_ready_for_execute_with_inline_ingest_payload(self) -> None:
+        runtime = AgenticRuntime(use_ollama=False, artifacts_dir=str(self.temp_dir))
+        evidence_map = self.temp_dir / "evidence_map_inline_ingest.json"
+        evidence_map.write_text(
+            json.dumps(
+                {
+                    "defaults": {
+                        "align_to_eval": True,
+                        "replace_metrics": True,
+                        "max_metric_delta": 0.02,
+                    },
+                    "baselines": {
+                        "external-placeholder": {
+                            "source": "arxiv:2501.12948",
+                            "source_date": "2026-02-17",
+                            "evidence": {
+                                "citation": "arxiv:2501.12948",
+                                "retrieval_date": "2026-02-17",
+                                "verification_method": "manual extraction",
+                            },
+                            "metrics": {
+                                "quality": 0.90,
+                                "aggregate_delta": 0.48,
+                            },
+                            "generate_ingest_payload": True,
+                            "ingest_payload": {
+                                "baseline_id": "external-extra-inline",
+                                "label": "External Extra Inline",
+                                "verified": True,
+                                "evidence": {
+                                    "replication_status": "replicated-internal-harness",
+                                },
+                            },
+                        }
+                    },
+                },
+                ensure_ascii=True,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        payload = runtime.run_external_claim_campaign_autofill(
+            registry_path=str(self.registry_path),
+            eval_path=str(self.eval_path),
+            evidence_map_path=str(evidence_map),
+            default_max_metric_delta=0.02,
+            scaffold_output_dir=str(self.temp_dir / "campaign_scaffold"),
+            autofill_output_dir=str(self.temp_dir / "campaign_autofill"),
+        )
+        self.assertEqual(payload["status"], "ready-for-execute")
+        self.assertEqual(payload["autofill"]["status"], "ok")
+        self.assertEqual(payload["readiness"]["status"], "ready-for-execute")
+        self.assertEqual(payload["readiness"]["input_validation"]["status"], "ok")
+        ingest_manifest_path = Path(payload["autofill"]["ingest_manifest_path"])
+        self.assertTrue(ingest_manifest_path.exists())
+        ingest_manifest = json.loads(ingest_manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(ingest_manifest), 1)
+        inline_payload_path = Path(ingest_manifest[0])
+        self.assertTrue(inline_payload_path.exists())
+        inline_payload = json.loads(inline_payload_path.read_text(encoding="utf-8"))
+        self.assertEqual(inline_payload["baseline_id"], "external-extra-inline")
 
 
 if __name__ == "__main__":
