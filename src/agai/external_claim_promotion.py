@@ -52,25 +52,29 @@ class ExternalClaimPromotionService:
                 default_max_metric_delta=default_max_metric_delta,
             )
         after = projected.get("after", {})
-        projected_distance = int(after.get("external_claim_distance", before["external_claim_distance"]))
-        projected_reduction = int(before["external_claim_distance"]) - projected_distance
-        promotable = bool(
-            projected.get("status") == "ok"
-            and projected_reduction > 0
-            and projected_distance <= int(before["external_claim_distance"])
+        projected_snapshot = {
+            "external_claim_distance": int(after.get("external_claim_distance", before["external_claim_distance"])),
+            "external_claim_ready": bool(after.get("external_claim_ready", False)),
+            "comparable_external_baselines": int(after.get("comparable_external_baselines", 0)),
+            "required_external_baselines": int(after.get("required_external_baselines", 0)),
+        }
+        promotion_gates = self._load_promotion_gates()
+        gate_evaluation = self._evaluate_execute_gates(
+            before=before,
+            after=projected_snapshot,
+            stage_status=str(projected.get("status", "unknown")),
+            promotion_gates=promotion_gates,
         )
+        projected_distance = int(projected_snapshot["external_claim_distance"])
+        projected_reduction = int(before["external_claim_distance"]) - projected_distance
+        promotable = bool(gate_evaluation.get("pass", False))
         return {
             "status": "ok",
             "source_registry_path": str(source_path),
             "required_confirmation_hash": source_hash,
             "promotable": promotable,
             "before": before,
-            "projected_after": {
-                "external_claim_distance": projected_distance,
-                "external_claim_ready": bool(after.get("external_claim_ready", False)),
-                "comparable_external_baselines": int(after.get("comparable_external_baselines", 0)),
-                "required_external_baselines": int(after.get("required_external_baselines", 0)),
-            },
+            "projected_after": projected_snapshot,
             "projected_delta": {
                 "external_claim_distance_reduction": projected_reduction,
                 "comparable_external_baselines_increase": int(
@@ -78,6 +82,8 @@ class ExternalClaimPromotionService:
                 ),
             },
             "projected_campaign_status": str(projected.get("status", "unknown")),
+            "promotion_gates": promotion_gates,
+            "gate_evaluation": gate_evaluation,
             "projected_campaign_summary": {
                 "ingest_count": int(projected.get("ingest_stage", {}).get("count", 0)),
                 "baseline_step_count": int(projected.get("baseline_steps", {}).get("count", 0)),
@@ -126,40 +132,94 @@ class ExternalClaimPromotionService:
             registry_path=str(source_path),
             max_metric_delta=default_max_metric_delta,
         )
-        ingest_results = self._run_ingest_stage(
-            source_registry_path=str(source_path),
-            ingest_payload_paths=campaign_config.get("ingest_payload_paths", []),
-        )
-        step_results = self._run_baseline_steps(
-            eval_report=eval_report,
-            source_registry_path=str(source_path),
-            baseline_runs=campaign_config.get("baseline_runs", []),
-            default_max_metric_delta=default_max_metric_delta,
-        )
+        registry_bytes_before = source_path.read_bytes()
+        promotion_gates = self._load_promotion_gates()
+        ingest_results: list[dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
+        executed_after = dict(before)
+        execution_status = "error"
+        gate_evaluation = {
+            "pass": False,
+            "reason": "execute path did not complete",
+            "stage_status": "error",
+            "distance_reduction": 0,
+            "min_distance_reduction": int(promotion_gates["min_distance_reduction"]),
+            "max_after_external_claim_distance": promotion_gates["max_after_external_claim_distance"],
+            "require_external_claim_ready": bool(promotion_gates["require_external_claim_ready"]),
+            "after_external_claim_distance": int(before["external_claim_distance"]),
+            "after_external_claim_ready": bool(before["external_claim_ready"]),
+            "reasons": ["execute path did not complete"],
+        }
+        rollback_applied = False
+        rollback_reason = ""
+        execution_error = ""
+
+        try:
+            ingest_results = self._run_ingest_stage(
+                source_registry_path=str(source_path),
+                ingest_payload_paths=campaign_config.get("ingest_payload_paths", []),
+            )
+            step_results = self._run_baseline_steps(
+                eval_report=eval_report,
+                source_registry_path=str(source_path),
+                baseline_runs=campaign_config.get("baseline_runs", []),
+                default_max_metric_delta=default_max_metric_delta,
+            )
+            executed_after = self._distance_snapshot(
+                eval_report=eval_report,
+                registry_path=str(source_path),
+                max_metric_delta=default_max_metric_delta,
+            )
+            execution_status = self._derive_stage_status(ingest_results=ingest_results, step_results=step_results)
+            gate_evaluation = self._evaluate_execute_gates(
+                before=before,
+                after=executed_after,
+                stage_status=execution_status,
+                promotion_gates=promotion_gates,
+            )
+            if not gate_evaluation.get("pass", False):
+                rollback_reason = "promotion gates failed"
+                self._restore_registry(path=source_path, payload=registry_bytes_before)
+                rollback_applied = True
+        except Exception as exc:  # noqa: BLE001
+            execution_error = str(exc)
+            rollback_reason = "execute raised exception"
+            self._restore_registry(path=source_path, payload=registry_bytes_before)
+            rollback_applied = True
+            execution_status = "error"
+
         after = self._distance_snapshot(
             eval_report=eval_report,
             registry_path=str(source_path),
             max_metric_delta=default_max_metric_delta,
         )
-
-        status = "ok"
-        if any(str(row.get("status", "")) == "error" for row in ingest_results):
-            status = "error"
-        elif any(str(row.get("status", "")) == "error" for row in step_results):
-            status = "error"
-        elif any(str(row.get("status", "")) == "blocked" for row in step_results):
-            status = "partial"
+        source_hash_after = self._sha256(source_path)
+        source_registry_mutated = bool(source_hash_after != current_hash)
+        status = "ok" if execution_status == "ok" and not rollback_applied else "error"
+        if rollback_applied and execution_error:
+            gate_reasons = list(gate_evaluation.get("reasons", []))
+            gate_reasons.append(f"execute_exception={execution_error}")
+            gate_evaluation["reasons"] = gate_reasons
+            gate_evaluation["reason"] = "; ".join(gate_reasons)
 
         return {
             "status": status,
+            "execution_status": execution_status,
             "source_registry_path": str(source_path),
-            "source_registry_mutated": True,
+            "source_registry_mutated": source_registry_mutated,
             "before": before,
+            "executed_after": executed_after,
             "after": after,
             "delta": {
                 "external_claim_distance_reduction": int(before["external_claim_distance"])
                 - int(after["external_claim_distance"]),
                 "comparable_external_baselines_increase": int(after["comparable_external_baselines"])
+                - int(before["comparable_external_baselines"]),
+            },
+            "execution_delta": {
+                "external_claim_distance_reduction": int(before["external_claim_distance"])
+                - int(executed_after["external_claim_distance"]),
+                "comparable_external_baselines_increase": int(executed_after["comparable_external_baselines"])
                 - int(before["comparable_external_baselines"]),
             },
             "ingest_stage": {
@@ -170,6 +230,12 @@ class ExternalClaimPromotionService:
                 "count": len(step_results),
                 "results": step_results,
             },
+            "promotion_gates": promotion_gates,
+            "gate_evaluation": gate_evaluation,
+            "rollback_applied": rollback_applied,
+            "rollback_reason": rollback_reason,
+            "source_hash_before": current_hash,
+            "source_hash_after": source_hash_after,
             "used_confirmation_hash": confirmation_hash.strip(),
             "disclaimer": (
                 "Execute mode mutates source registry. Use preview mode and hash confirmation to "
@@ -370,6 +436,94 @@ class ExternalClaimPromotionService:
             "comparable_external_baselines": int(before.get("comparable_external_baselines", 0)),
             "required_external_baselines": int(before.get("required_external_baselines", 0)),
         }
+
+    def _derive_stage_status(
+        self,
+        *,
+        ingest_results: list[dict[str, Any]],
+        step_results: list[dict[str, Any]],
+    ) -> str:
+        status = "ok"
+        if any(str(row.get("status", "")) == "error" for row in ingest_results):
+            status = "error"
+        elif any(str(row.get("status", "")) == "error" for row in step_results):
+            status = "error"
+        elif any(str(row.get("status", "")) == "blocked" for row in step_results):
+            status = "partial"
+        return status
+
+    def _load_promotion_gates(self) -> dict[str, Any]:
+        default_policy = {
+            "min_distance_reduction": 1,
+            "max_after_external_claim_distance": None,
+            "require_external_claim_ready": False,
+        }
+        policy_path = Path(self.policy_path)
+        if not policy_path.exists():
+            return default_policy
+        try:
+            payload = json.loads(policy_path.read_text(encoding="utf-8"))
+            gates = payload.get("promotion_gates", {})
+            if not isinstance(gates, dict):
+                return default_policy
+            raw_max_after = gates.get("max_after_external_claim_distance")
+            max_after = None
+            if raw_max_after is not None:
+                max_after = max(0, int(raw_max_after))
+            return {
+                "min_distance_reduction": max(0, int(gates.get("min_distance_reduction", 1))),
+                "max_after_external_claim_distance": max_after,
+                "require_external_claim_ready": bool(gates.get("require_external_claim_ready", False)),
+            }
+        except Exception:  # noqa: BLE001
+            return default_policy
+
+    def _evaluate_execute_gates(
+        self,
+        *,
+        before: dict[str, Any],
+        after: dict[str, Any],
+        stage_status: str,
+        promotion_gates: dict[str, Any],
+    ) -> dict[str, Any]:
+        before_distance = int(before.get("external_claim_distance", 0))
+        after_distance = int(after.get("external_claim_distance", 0))
+        distance_reduction = before_distance - after_distance
+        min_distance_reduction = int(promotion_gates.get("min_distance_reduction", 1))
+        max_after = promotion_gates.get("max_after_external_claim_distance")
+        require_ready = bool(promotion_gates.get("require_external_claim_ready", False))
+        reasons: list[str] = []
+
+        if stage_status != "ok":
+            reasons.append(f"stage status must be ok, got {stage_status}")
+        if distance_reduction < min_distance_reduction:
+            reasons.append(
+                f"distance reduction {distance_reduction} is below min_distance_reduction {min_distance_reduction}"
+            )
+        if max_after is not None and after_distance > int(max_after):
+            reasons.append(
+                f"after external_claim_distance {after_distance} exceeds max_after_external_claim_distance {int(max_after)}"
+            )
+        if require_ready and not bool(after.get("external_claim_ready", False)):
+            reasons.append("after external_claim_ready is false but required by promotion gate")
+
+        gate_pass = len(reasons) == 0
+        reason = "promotion execute gates satisfied" if gate_pass else "; ".join(reasons)
+        return {
+            "pass": gate_pass,
+            "reason": reason,
+            "stage_status": stage_status,
+            "distance_reduction": distance_reduction,
+            "min_distance_reduction": min_distance_reduction,
+            "max_after_external_claim_distance": max_after,
+            "require_external_claim_ready": require_ready,
+            "after_external_claim_distance": after_distance,
+            "after_external_claim_ready": bool(after.get("external_claim_ready", False)),
+            "reasons": reasons,
+        }
+
+    def _restore_registry(self, *, path: Path, payload: bytes) -> None:
+        path.write_bytes(payload)
 
     def _load_overrides(self, *, path: str) -> dict[str, Any]:
         if not path.strip():

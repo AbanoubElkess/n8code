@@ -22,6 +22,11 @@
       "tbd"
     ]
   },
+  "promotion_gates": {
+    "min_distance_reduction": 1,
+    "max_after_external_claim_distance": null,
+    "require_external_claim_ready": false
+  },
   "seed_control": {
     "enabled": true,
     "default_seed": 20260217
