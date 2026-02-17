@@ -166,10 +166,10 @@ class TestExternalClaimPromotionService(unittest.TestCase):
             },
             {
                 "timestamp": "2026-02-17T00:10:00",
-                "external_claim_distance": 2,
-                "total_claim_distance": 2,
+                "external_claim_distance": 1,
+                "total_claim_distance": 1.6,
                 "projected_total_claim_distance": 1,
-                "total_progress_ratio": 0.3333333333333333,
+                "total_progress_ratio": 0.4666666666666667,
                 "projected_total_progress_ratio": 0.6666666666666666,
             },
         ]

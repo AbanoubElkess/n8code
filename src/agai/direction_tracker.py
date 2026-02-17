@@ -76,6 +76,8 @@ class DirectionTracker:
                 "reality_score_trend": 0.0,
                 "total_progress_ratio_trend": 0.0,
                 "projection_delivery_samples": 0,
+                "projection_transition_samples": 0,
+                "projection_pending_samples": 0,
                 "latest_projection_distance_shortfall": 0.0,
                 "latest_projection_progress_delivery_ratio": 1.0,
                 "mean_projection_distance_shortfall": 0.0,
@@ -96,6 +98,8 @@ class DirectionTracker:
         total_progress_ratio_trend = 0.0
         projection_shortfalls: list[float] = []
         projection_delivery_ratios: list[float] = []
+        projection_transition_samples = 0
+        projection_pending_samples = 0
         for index in range(1, len(rows)):
             prev_row = rows[index - 1]
             curr_row = rows[index]
@@ -103,12 +107,15 @@ class DirectionTracker:
             projected_total = float(prev_row.get("projected_total_claim_distance", prev_total))
             curr_total = float(curr_row.get("total_claim_distance", curr_row.get("external_claim_distance", 0.0)))
             projected_reduction = prev_total - projected_total
+            if projected_reduction <= 1e-9:
+                continue
+            projection_transition_samples += 1
             actual_reduction = prev_total - curr_total
+            if abs(actual_reduction) <= 1e-9:
+                projection_pending_samples += 1
+                continue
             shortfall = curr_total - projected_total
-            if projected_reduction > 1e-9:
-                delivery_ratio = actual_reduction / projected_reduction
-            else:
-                delivery_ratio = 1.0 if actual_reduction >= -1e-9 else 0.0
+            delivery_ratio = actual_reduction / projected_reduction
             projection_shortfalls.append(shortfall)
             projection_delivery_ratios.append(delivery_ratio)
         if len(rows) >= 2:
@@ -151,7 +158,9 @@ class DirectionTracker:
             "total_distance_trend": total_distance_trend,
             "reality_score_trend": reality_score_trend,
             "total_progress_ratio_trend": total_progress_ratio_trend,
+            "projection_transition_samples": projection_transition_samples,
             "projection_delivery_samples": len(projection_delivery_ratios),
+            "projection_pending_samples": projection_pending_samples,
             "latest_projection_distance_shortfall": latest_projection_distance_shortfall,
             "latest_projection_progress_delivery_ratio": latest_projection_progress_delivery_ratio,
             "mean_projection_distance_shortfall": mean_projection_distance_shortfall,

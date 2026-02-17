@@ -73,6 +73,52 @@ class TestDirectionTracker(unittest.TestCase):
         self.assertGreater(summary["reality_score_trend"], 0.0)
         self.assertGreater(summary["total_progress_ratio_trend"], 0.0)
         self.assertEqual(summary["projection_delivery_samples"], 1)
+        self.assertEqual(summary["projection_transition_samples"], 1)
+        self.assertEqual(summary["projection_pending_samples"], 0)
+        self.assertAlmostEqual(summary["latest_projection_distance_shortfall"], 0.0)
+        self.assertAlmostEqual(summary["latest_projection_progress_delivery_ratio"], 1.0)
+
+    def test_summary_tracks_pending_projection_without_delivery_sample(self) -> None:
+        first = {
+            "distance": {
+                "internal_remaining_distance": 0.1,
+                "external_claim_distance": 2,
+                "total_claim_distance": 2,
+                "max_total_claim_distance": 3,
+                "total_progress_ratio": 0.3333333333333333,
+                "projected_total_claim_distance": 1,
+                "projected_total_progress_ratio": 0.6666666666666666,
+            },
+            "direction": {
+                "combined_average_reality_score": 0.9,
+                "internal_ready": False,
+                "external_claim_ready": False,
+                "claim_scope": "not-ready-for-release-claims",
+            },
+        }
+        second = {
+            "distance": {
+                "internal_remaining_distance": 0.1,
+                "external_claim_distance": 2,
+                "total_claim_distance": 2,
+                "max_total_claim_distance": 3,
+                "total_progress_ratio": 0.3333333333333333,
+                "projected_total_claim_distance": 1,
+                "projected_total_progress_ratio": 0.6666666666666666,
+            },
+            "direction": {
+                "combined_average_reality_score": 0.9,
+                "internal_ready": False,
+                "external_claim_ready": False,
+                "claim_scope": "not-ready-for-release-claims",
+            },
+        }
+        self.tracker.record(first)
+        self.tracker.record(second)
+        summary = self.tracker.summary()
+        self.assertEqual(summary["projection_transition_samples"], 1)
+        self.assertEqual(summary["projection_pending_samples"], 1)
+        self.assertEqual(summary["projection_delivery_samples"], 0)
         self.assertAlmostEqual(summary["latest_projection_distance_shortfall"], 0.0)
         self.assertAlmostEqual(summary["latest_projection_progress_delivery_ratio"], 1.0)
 

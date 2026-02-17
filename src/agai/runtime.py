@@ -516,7 +516,9 @@ class AgenticRuntime:
         }
         tracking_snapshot = self.direction_tracker.record(payload)
         tracking_summary = self.direction_tracker.summary()
+        projection_transition_samples = int(tracking_summary.get("projection_transition_samples", 0))
         projection_delivery_samples = int(tracking_summary.get("projection_delivery_samples", 0))
+        projection_pending_samples = int(tracking_summary.get("projection_pending_samples", 0))
         latest_projection_distance_shortfall = float(
             tracking_summary.get("latest_projection_distance_shortfall", 0.0)
         )
@@ -524,26 +526,40 @@ class AgenticRuntime:
             tracking_summary.get("latest_projection_progress_delivery_ratio", 1.0)
         )
         projection_gate_evaluated = projection_delivery_samples > 0
+        projection_pending_without_delivery = (
+            projection_transition_samples > 0
+            and projection_delivery_samples == 0
+            and projection_pending_samples > 0
+        )
         projection_reality_gate_pass = (
-            not projection_gate_evaluated
-            or (
-                latest_projection_distance_shortfall <= (max_projection_distance_shortfall + 1e-9)
-                and latest_projection_progress_delivery_ratio >= (min_projection_progress_delivery_ratio - 1e-9)
+            not projection_pending_without_delivery
+            and (
+                not projection_gate_evaluated
+                or (
+                    latest_projection_distance_shortfall <= (max_projection_distance_shortfall + 1e-9)
+                    and latest_projection_progress_delivery_ratio >= (min_projection_progress_delivery_ratio - 1e-9)
+                )
             )
         )
         payload["gates"]["projection_realism_gate"] = {
             "pass": projection_reality_gate_pass,
             "evaluated": projection_gate_evaluated,
             "reason": (
-                "projection delivery gate skipped (insufficient history)"
-                if not projection_gate_evaluated
+                "projection delivery pending (no measurable claim-distance movement yet)"
+                if projection_pending_without_delivery
                 else (
-                    "projection delivery thresholds satisfied"
-                    if projection_reality_gate_pass
-                    else "projection delivery thresholds not satisfied"
+                    "projection delivery gate skipped (insufficient history)"
+                    if not projection_gate_evaluated
+                    else (
+                        "projection delivery thresholds satisfied"
+                        if projection_reality_gate_pass
+                        else "projection delivery thresholds not satisfied"
+                    )
                 )
             ),
+            "projection_transition_samples": projection_transition_samples,
             "projection_delivery_samples": projection_delivery_samples,
+            "projection_pending_samples": projection_pending_samples,
             "latest_projection_distance_shortfall": latest_projection_distance_shortfall,
             "max_projection_distance_shortfall": max_projection_distance_shortfall,
             "latest_projection_progress_delivery_ratio": latest_projection_progress_delivery_ratio,
