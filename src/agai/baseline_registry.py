@@ -34,6 +34,8 @@ class DeclaredBaselineComparator:
                 "summary": {
                     "total_baselines": 0,
                     "comparable_baselines": 0,
+                    "comparable_external_baselines": 0,
+                    "comparable_internal_baselines": 0,
                     "non_comparable_baselines": 0,
                     "best_mean_advantage": 0.0,
                 },
@@ -49,6 +51,8 @@ class DeclaredBaselineComparator:
             for entry in baselines
         ]
         comparable = [row for row in comparisons if bool(row["comparability"]["comparable"])]
+        comparable_external = [row for row in comparable if str(row.get("source_type", "")).lower().startswith("external")]
+        comparable_internal = [row for row in comparable if str(row.get("source_type", "")).lower().startswith("internal")]
         best_mean_advantage = max((float(row["mean_advantage"]) for row in comparable), default=0.0)
         return {
             "status": "ok",
@@ -59,6 +63,8 @@ class DeclaredBaselineComparator:
             "summary": {
                 "total_baselines": len(comparisons),
                 "comparable_baselines": len(comparable),
+                "comparable_external_baselines": len(comparable_external),
+                "comparable_internal_baselines": len(comparable_internal),
                 "non_comparable_baselines": len(comparisons) - len(comparable),
                 "best_mean_advantage": round(best_mean_advantage, 6),
             },
@@ -94,10 +100,17 @@ class DeclaredBaselineComparator:
         expected_scoring = str(baseline.get("scoring_protocol", "unknown-scoring"))
         verified = bool(baseline.get("verified", False))
         enabled = bool(baseline.get("enabled", True))
+        source_type = str(baseline.get("source_type", "unknown"))
+        evidence = baseline.get("evidence", {})
         baseline_metrics = baseline.get("metrics", {})
 
         reasons: list[str] = []
         comparable = True
+        evidence_status = self._evaluate_evidence(
+            evidence=evidence,
+            source_type=source_type,
+            verified=verified,
+        )
 
         if not enabled:
             comparable = False
@@ -105,6 +118,9 @@ class DeclaredBaselineComparator:
         if not verified:
             comparable = False
             reasons.append("baseline unverified")
+        if not evidence_status["evidence_valid"]:
+            comparable = False
+            reasons.extend(evidence_status["reasons"])
         if expected_suite != suite_id:
             comparable = False
             reasons.append("suite mismatch")
@@ -160,16 +176,47 @@ class DeclaredBaselineComparator:
         return {
             "baseline_id": baseline_id,
             "label": str(baseline.get("label", baseline_id)),
-            "source_type": str(baseline.get("source_type", "unknown")),
+            "source_type": source_type,
             "source": str(baseline.get("source", "unknown")),
             "source_date": str(baseline.get("source_date", "unknown")),
             "suite_id": expected_suite,
             "scoring_protocol": expected_scoring,
             "comparability": comparability,
+            "verification": evidence_status,
             "metric_comparison": metric_comparison,
             "wins": wins,
             "losses": losses,
             "ties": ties,
             "mean_advantage": round(mean_advantage, 6),
             "notes": str(baseline.get("notes", "")),
+        }
+
+    def _evaluate_evidence(self, evidence: Any, source_type: str, verified: bool) -> dict[str, Any]:
+        required_fields = [
+            "citation",
+            "artifact_hash",
+            "retrieval_date",
+            "verification_method",
+        ]
+        reasons: list[str] = []
+        evidence_valid = True
+        evidence_payload: dict[str, Any] = evidence if isinstance(evidence, dict) else {}
+        missing = [field for field in required_fields if not evidence_payload.get(field)]
+        if missing:
+            evidence_valid = False
+            reasons.append(f"missing verification evidence fields: {missing}")
+
+        replication_status = str(evidence_payload.get("replication_status", "unspecified"))
+        source_key = source_type.lower()
+        external_source = source_key.startswith("external")
+        if verified and external_source and replication_status != "replicated-internal-harness":
+            evidence_valid = False
+            reasons.append("external baseline missing replicated-internal-harness status")
+
+        return {
+            "verified_flag": verified,
+            "evidence_valid": evidence_valid,
+            "missing_fields": missing,
+            "replication_status": replication_status,
+            "reasons": reasons,
         }

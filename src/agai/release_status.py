@@ -110,7 +110,10 @@ class ReleaseStatusEvaluator:
     def _count_comparable_external(self, eval_report: dict[str, Any]) -> int:
         comparison = eval_report.get("declared_baseline_comparison", {})
         rows = comparison.get("comparisons", [])
-        if not isinstance(rows, list):
+        if not isinstance(rows, list) or not rows:
+            summary = comparison.get("summary", {})
+            if isinstance(summary, dict):
+                return int(summary.get("comparable_external_baselines", 0))
             return 0
         count = 0
         for row in rows:

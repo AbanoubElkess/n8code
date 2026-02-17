@@ -57,6 +57,28 @@ class TestReleaseStatusEvaluator(unittest.TestCase):
         self.assertEqual(report["claim_scope"], "not-ready-for-release-claims")
         self.assertFalse(report["gates"]["hard_suite_gate"]["pass"])
 
+    def test_external_claim_ready_with_comparable_external_row(self) -> None:
+        evaluator = ReleaseStatusEvaluator(policy_path="config/repro_policy.json")
+        report = evaluator.evaluate(
+            {
+                "benchmark_progress": {
+                    "ready": True,
+                    "gaps": {"remaining_distance": 0.0},
+                },
+                "declared_baseline_comparison": {
+                    "comparisons": [
+                        {
+                            "source_type": "external_reported",
+                            "comparability": {"comparable": True},
+                        }
+                    ]
+                },
+            }
+        )
+        self.assertTrue(report["release_ready_internal"])
+        self.assertTrue(report["external_claim_ready"])
+        self.assertEqual(report["claim_scope"], "internal-and-declared-external-comparative")
+
 
 if __name__ == "__main__":
     unittest.main()

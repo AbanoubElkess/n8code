@@ -12,6 +12,13 @@
       "enabled": true,
       "suite_id": "quantum_hard_suite_v2_adversarial",
       "scoring_protocol": "src/agai/quantum_suite.py:263",
+      "evidence": {
+        "citation": "internal calibration runbook v1",
+        "artifact_hash": "sha256:internal-generalist-floor-v1",
+        "retrieval_date": "2026-02-17",
+        "verification_method": "internal reproducibility replay",
+        "replication_status": "replicated-internal-harness"
+      },
       "metrics": {
         "quality": 0.74,
         "aggregate_delta": 0.25,
@@ -31,6 +38,13 @@
       "enabled": true,
       "suite_id": "unknown-external-suite",
       "scoring_protocol": "unknown-scoring",
+      "evidence": {
+        "citation": "",
+        "artifact_hash": "",
+        "retrieval_date": "",
+        "verification_method": "",
+        "replication_status": "pending"
+      },
       "metrics": {},
       "notes": "Placeholder entry kept intentionally non-comparable until replication protocol is completed."
     }
