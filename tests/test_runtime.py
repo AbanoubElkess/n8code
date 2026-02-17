@@ -29,6 +29,8 @@ class TestRuntime(unittest.TestCase):
         )
         self.assertIn("result", demo)
         self.assertIn("tool_reasoning", demo)
+        self.assertIn("hypothesis_sandbox", demo)
+        self.assertIn("acceptance_rate", demo["hypothesis_sandbox"])
         self.assertIn("qec_simulator_hook", demo["tool_reasoning"])
         self.assertTrue((self.temp_dir / "quantum_demo_output.json").exists())
 

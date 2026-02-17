@@ -182,6 +182,7 @@ class AgenticRuntime:
             domain=task.domain,
             constraints=task.constraints,
         )
+        sandbox_report = self.guidance.latest_sandbox_report()
         payload = {
             "compute_decision": compute_decision.__dict__,
             "result": result.__dict__,
@@ -193,6 +194,7 @@ class AgenticRuntime:
             },
             "experiment_plan": experiment_plan.__dict__,
             "hypothesis_candidates": hypotheses,
+            "hypothesis_sandbox": sandbox_report,
         }
         out_path = self.artifacts_dir / "quantum_demo_output.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
