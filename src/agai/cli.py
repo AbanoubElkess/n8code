@@ -97,6 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
     campaign.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
     campaign.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for replay checks")
     campaign.add_argument("--sandbox-registry-path", default="", help="Optional explicit path for sandbox registry output")
+    promotion = sub.add_parser(
+        "external-claim-promotion",
+        help="Preview or execute production promotion from campaign config with hash confirmation gate",
+    )
+    promotion.add_argument("--config", required=True, help="Path to campaign configuration json")
+    promotion.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to source baseline registry json")
+    promotion.add_argument("--eval-path", default="", help="Optional path to evaluation artifact json")
+    promotion.add_argument("--max-metric-delta", type=float, default=0.02, help="Default max metric delta for replay checks")
+    promotion.add_argument("--execute", action="store_true", help="Execute promotion on source registry")
+    promotion.add_argument("--confirm-source-hash", default="", help="Required in execute mode. Must match preview hash.")
     ingest = sub.add_parser("ingest-external-baseline", help="Validate and ingest external baseline evidence payload")
     ingest.add_argument("--input", required=True, help="Path to ingestion payload json")
     ingest.add_argument("--registry-path", default="config/frontier_baselines.json", help="Path to baseline registry json")
@@ -181,6 +191,15 @@ def main() -> None:
             eval_path=str(args.eval_path or "") or None,
             default_max_metric_delta=float(args.max_metric_delta),
             sandbox_registry_path=str(args.sandbox_registry_path or "") or None,
+        )
+    elif args.command == "external-claim-promotion":
+        output = runtime.run_external_claim_promotion(
+            config_path=str(args.config),
+            registry_path=str(args.registry_path),
+            eval_path=str(args.eval_path or "") or None,
+            default_max_metric_delta=float(args.max_metric_delta),
+            execute=bool(args.execute),
+            confirmation_hash=str(args.confirm_source_hash),
         )
     elif args.command == "ingest-external-baseline":
         output = runtime.run_ingest_external_baseline(input_path=args.input, registry_path=args.registry_path)

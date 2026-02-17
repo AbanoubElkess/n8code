@@ -263,6 +263,16 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("delta", campaign_result)
         self.assertIn("baseline_steps", campaign_result)
         self.assertTrue((self.temp_dir / "external_claim_sandbox_campaign.json").exists())
+        promotion_preview = runtime.run_external_claim_promotion(
+            config_path=str(campaign_config),
+            registry_path=str(ingest_registry),
+            eval_path=str(self.temp_dir / "quantum_hard_suite_eval.json"),
+            default_max_metric_delta=0.05,
+            execute=False,
+        )
+        self.assertEqual(promotion_preview["mode"], "preview")
+        self.assertIn("required_confirmation_hash", promotion_preview)
+        self.assertTrue((self.temp_dir / "external_claim_promotion.json").exists())
 
         distilled = runtime.run_trace_distillation()
         self.assertIn("policies", distilled)
