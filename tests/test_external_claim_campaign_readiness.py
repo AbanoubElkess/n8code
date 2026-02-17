@@ -28,12 +28,14 @@ class TestExternalClaimCampaignReadinessService(unittest.TestCase):
                     "baseline_runs": [],
                 },
             },
+            validator_payload=None,
             preview_payload=None,
         )
         self.assertEqual(payload["status"], "blocked")
         self.assertFalse(payload["ready_for_preview"])
         self.assertFalse(payload["ready_for_execute"])
         self.assertFalse(payload["preview_gate"]["executed"])
+        self.assertFalse(payload["draft_gate"]["pass"])
 
     def test_ready_for_preview_without_preview_payload(self) -> None:
         service = ExternalClaimCampaignReadinessService()
@@ -48,12 +50,17 @@ class TestExternalClaimCampaignReadinessService(unittest.TestCase):
                     "baseline_runs": [{"baseline_id": "external-a"}],
                 },
             },
+            validator_payload={
+                "status": "ok",
+                "issues": [],
+            },
             preview_payload=None,
         )
         self.assertEqual(payload["status"], "ready-for-preview")
         self.assertTrue(payload["ready_for_preview"])
         self.assertFalse(payload["ready_for_execute"])
         self.assertFalse(payload["preview_gate"]["executed"])
+        self.assertTrue(payload["validator_gate"]["pass"])
 
     def test_ready_for_execute_when_preview_is_promotable(self) -> None:
         service = ExternalClaimCampaignReadinessService()
@@ -67,6 +74,10 @@ class TestExternalClaimCampaignReadinessService(unittest.TestCase):
                     "ingest_payload_paths": [],
                     "baseline_runs": [{"baseline_id": "external-a"}],
                 },
+            },
+            validator_payload={
+                "status": "ok",
+                "issues": [],
             },
             preview_payload={
                 "status": "ok",
@@ -82,6 +93,30 @@ class TestExternalClaimCampaignReadinessService(unittest.TestCase):
         self.assertTrue(payload["ready_for_execute"])
         self.assertTrue(payload["preview_gate"]["executed"])
         self.assertTrue(payload["preview_gate"]["promotable"])
+
+    def test_blocked_when_validator_fails_even_if_draft_ok(self) -> None:
+        service = ExternalClaimCampaignReadinessService()
+        payload = service.evaluate(
+            draft_payload={
+                "status": "ok",
+                "summary": {"unresolved_dependencies": 0},
+                "campaign_config": {
+                    "ingest_payload_paths": [],
+                    "baseline_runs": [{"baseline_id": "external-a"}],
+                },
+            },
+            validator_payload={
+                "status": "error",
+                "issues": [
+                    {"message": "source_date must be ISO-8601"},
+                ],
+            },
+            preview_payload=None,
+        )
+        self.assertEqual(payload["status"], "blocked")
+        self.assertFalse(payload["ready_for_preview"])
+        self.assertFalse(payload["validator_gate"]["pass"])
+        self.assertIn("source_date", " ".join(payload["validator_gate"]["reasons"]))
 
 
 class TestRuntimeExternalClaimCampaignReadiness(unittest.TestCase):
@@ -169,6 +204,8 @@ class TestRuntimeExternalClaimCampaignReadiness(unittest.TestCase):
         self.assertFalse(payload["ready_for_preview"])
         self.assertFalse(payload["ready_for_execute"])
         self.assertEqual(payload["preview"]["status"], "not-executed")
+        self.assertEqual(payload["input_validation"]["status"], "error")
+        self.assertFalse(payload["validator_gate"]["pass"])
         self.assertTrue((self.temp_dir / "external_claim_campaign_readiness.json").exists())
 
     def test_readiness_ready_for_execute_with_filled_inputs(self) -> None:
@@ -255,6 +292,8 @@ class TestRuntimeExternalClaimCampaignReadiness(unittest.TestCase):
         self.assertEqual(payload["status"], "ready-for-execute")
         self.assertTrue(payload["ready_for_preview"])
         self.assertTrue(payload["ready_for_execute"])
+        self.assertEqual(payload["input_validation"]["status"], "ok")
+        self.assertTrue(payload["validator_gate"]["pass"])
         self.assertEqual(payload["draft"]["status"], "ok")
         self.assertEqual(payload["preview"]["status"], "ok")
         self.assertTrue(payload["preview"]["promotable"])

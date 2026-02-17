@@ -25,6 +25,7 @@ from .external_claim_campaign import ExternalClaimSandboxCampaignRunner
 from .external_claim_campaign_draft import ExternalClaimCampaignDraftService
 from .external_claim_campaign_readiness import ExternalClaimCampaignReadinessService
 from .external_claim_campaign_scaffold import ExternalClaimCampaignScaffoldService
+from .external_claim_campaign_validator import ExternalClaimCampaignValidatorService
 from .hypothesis import HypothesisExplorer
 from .external_claim_promotion import ExternalClaimPromotionService
 from .market import MarketGapAnalyzer
@@ -79,6 +80,7 @@ class AgenticRuntime:
         self.external_claim_campaign_draft = ExternalClaimCampaignDraftService()
         self.external_claim_campaign_readiness = ExternalClaimCampaignReadinessService()
         self.external_claim_campaign_scaffold = ExternalClaimCampaignScaffoldService()
+        self.external_claim_campaign_validator = ExternalClaimCampaignValidatorService()
         self.external_claim_promotion = ExternalClaimPromotionService(
             policy_path=str(self.release_status.policy_path)
         )
@@ -570,6 +572,27 @@ class AgenticRuntime:
             }
         ingest_payload_paths = ingest_manifest_result.get("payload", [])
 
+        validator_payload = self.external_claim_campaign_validator.validate(
+            claim_plan=claim_plan if isinstance(claim_plan, dict) else {},
+            patch_overrides_map=patch_map if isinstance(patch_map, dict) else {},
+            ingest_payload_paths=ingest_payload_paths if isinstance(ingest_payload_paths, list) else [],
+            eval_report=eval_report if isinstance(eval_report, dict) else {},
+            registry_path=active_registry,
+        )
+        validator_payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+            "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
+            "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
+        }
+        validator_payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+
         draft_payload = self.external_claim_campaign_draft.build(
             claim_plan=claim_plan,
             patch_overrides_map=patch_map if isinstance(patch_map, dict) else {},
@@ -609,7 +632,12 @@ class AgenticRuntime:
             (len(baseline_runs) if isinstance(baseline_runs, list) else 0)
             + (len(ingest_paths) if isinstance(ingest_paths, list) else 0)
         )
-        if draft_status == "ok" and unresolved_dependencies == 0 and staged_actions > 0:
+        if (
+            validator_payload.get("status") == "ok"
+            and draft_status == "ok"
+            and unresolved_dependencies == 0
+            and staged_actions > 0
+        ):
             preview_payload = self.external_claim_promotion.preview(
                 eval_report=eval_report,
                 source_registry_path=active_registry,
@@ -619,9 +647,11 @@ class AgenticRuntime:
 
         readiness = self.external_claim_campaign_readiness.evaluate(
             draft_payload=draft_payload,
+            validator_payload=validator_payload,
             preview_payload=preview_payload,
         )
         payload: dict[str, Any] = dict(readiness)
+        payload["input_validation"] = validator_payload
         payload["draft"] = draft_payload
         payload["preview"] = (
             preview_payload
@@ -646,6 +676,66 @@ class AgenticRuntime:
             "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
         }
         out_path = self.artifacts_dir / "external_claim_campaign_readiness.json"
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        return payload
+
+    def run_external_claim_campaign_validate(
+        self,
+        registry_path: str | None = None,
+        eval_path: str | None = None,
+        default_max_metric_delta: float = 0.02,
+        patch_map_path: str | None = None,
+        ingest_manifest_path: str | None = None,
+    ) -> dict[str, Any]:
+        context = self._prepare_external_claim_context(
+            registry_path=registry_path,
+            eval_path=eval_path,
+            default_max_metric_delta=default_max_metric_delta,
+        )
+        if context.get("status") != "ok":
+            return context
+        eval_report = context["eval_report"]
+        eval_source = str(context["eval_source"])
+        active_registry = str(context["active_registry"])
+        claim_plan = context["claim_plan"]
+
+        patch_map_result = self._load_patch_map(path=patch_map_path)
+        if patch_map_result.get("status") != "ok":
+            return {
+                "status": "error",
+                "reason": str(patch_map_result.get("reason", "invalid patch map payload")),
+            }
+        patch_map = patch_map_result.get("payload", {})
+
+        ingest_manifest_result = self._load_ingest_manifest(path=ingest_manifest_path)
+        if ingest_manifest_result.get("status") != "ok":
+            return {
+                "status": "error",
+                "reason": str(ingest_manifest_result.get("reason", "invalid ingest manifest payload")),
+            }
+        ingest_payload_paths = ingest_manifest_result.get("payload", [])
+
+        payload = self.external_claim_campaign_validator.validate(
+            claim_plan=claim_plan if isinstance(claim_plan, dict) else {},
+            patch_overrides_map=patch_map if isinstance(patch_map, dict) else {},
+            ingest_payload_paths=ingest_payload_paths if isinstance(ingest_payload_paths, list) else [],
+            eval_report=eval_report if isinstance(eval_report, dict) else {},
+            registry_path=active_registry,
+        )
+        payload["sources"] = {
+            "eval": eval_source,
+            "release_status": "computed-in-process",
+            "patch_map": str(Path(patch_map_path)) if patch_map_path else "none",
+            "ingest_manifest": str(Path(ingest_manifest_path)) if ingest_manifest_path else "none",
+        }
+        payload["plan_summary"] = {
+            "external_claim_distance": int(claim_plan.get("external_claim_distance", 0)),
+            "estimated_total_distance_after_recoverable_actions": int(
+                claim_plan.get("estimated_total_distance_after_recoverable_actions", 0)
+            ),
+            "additional_baselines_needed": int(claim_plan.get("additional_baselines_needed", 0)),
+        }
+        out_path = self.artifacts_dir / "external_claim_campaign_validate.json"
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
         return payload
 

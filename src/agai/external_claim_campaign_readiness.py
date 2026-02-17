@@ -8,6 +8,7 @@ class ExternalClaimCampaignReadinessService:
         self,
         *,
         draft_payload: dict[str, Any],
+        validator_payload: dict[str, Any] | None = None,
         preview_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not isinstance(draft_payload, dict):
@@ -39,7 +40,24 @@ class ExternalClaimCampaignReadinessService:
             draft_reasons.append(f"draft has {unresolved_dependencies} unresolved dependencies")
         if staged_actions == 0:
             draft_reasons.append("draft has no staged baseline_runs or ingest payloads")
-        ready_for_preview = len(draft_reasons) == 0
+
+        validator_executed = isinstance(validator_payload, dict)
+        validator_status = "not-executed"
+        validator_reasons: list[str] = []
+        validator_pass = True
+        if validator_executed:
+            payload = validator_payload if isinstance(validator_payload, dict) else {}
+            validator_status = str(payload.get("status", "unknown"))
+            validator_pass = validator_status == "ok"
+            if not validator_pass:
+                issues = payload.get("issues", [])
+                if isinstance(issues, list) and issues:
+                    for issue in issues[:5]:
+                        if isinstance(issue, dict):
+                            validator_reasons.append(str(issue.get("message", "validation issue detected")))
+                if not validator_reasons:
+                    validator_reasons.append("campaign input validation failed")
+        ready_for_preview = validator_pass and len(draft_reasons) == 0
 
         preview_executed = isinstance(preview_payload, dict)
         preview_status = "not-executed"
@@ -83,6 +101,12 @@ class ExternalClaimCampaignReadinessService:
                 "unresolved_dependencies": unresolved_dependencies,
                 "staged_actions": staged_actions,
                 "reasons": draft_reasons,
+            },
+            "validator_gate": {
+                "executed": validator_executed,
+                "pass": validator_pass,
+                "status": validator_status,
+                "reasons": validator_reasons,
             },
             "preview_gate": {
                 "executed": preview_executed,
